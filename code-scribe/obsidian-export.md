@@ -1,21 +1,24 @@
 # Obsidian Export Guide
 
-生成 README 后，同步导出到 Obsidian 知识库。
+将生成的 README 导出到 Obsidian 知识库。
 
-## 导出流程
-
-完成 README 后：
-
-1. 将 README 转换为符合 Obsidian 规范的 Markdown。
-2. 保存到：
-
-```text
-E:\资料\内容仓库\Contents\Working\
-```
+本规范仅负责导出，不参与 README 内容生成。
 
 ---
 
-## 文件命名
+# 导出路径
+
+默认保存到：
+
+```text
+E:\资料\内容仓库\Contents\CodeScribe\
+```
+
+如用户指定其它路径，以用户要求为准。
+
+---
+
+# 文件命名
 
 文件名格式：
 
@@ -23,17 +26,9 @@ E:\资料\内容仓库\Contents\Working\
 README-{单号}-{组件标识}-{版本}.md
 ```
 
-### 信息提取优先级
+命名信息直接使用 README 中已确认的信息，不重新分析源码。
 
-- **单号**：优先从项目目录名称提取。
-- **组件标识**：优先使用项目名称，其次使用 artifactId、package 名称、目录名称。
-- **版本**：优先从 pom.xml、package.json、项目配置文件、版本常量提取。
-
----
-
-## 降级策略
-
-如果无法提取全部信息，应至少保留两个维度。
+降级策略：
 
 | 场景 | 文件名示例 |
 |------|-----------|
@@ -42,29 +37,52 @@ README-{单号}-{组件标识}-{版本}.md
 | 无版本 | `README-JKN20260601_1176-PPACS.md` |
 | 无单号和版本 | `README-PPACS-YYYYMMDD.md` |
 
+默认覆盖同名文件；只有用户明确要求保留历史版本时，才生成新文件。
+
 ---
 
-## Frontmatter
+# Frontmatter
 
-导出的文档开头统一生成：
+导出文档统一添加：
 
 ```yaml
 ---
-project: PPACS_1.0.0049
-date: YYYY-MM-DD
-type: README
-tags: [项目文档, README]
+项目: PPACS_1.0.0049  
+日期: YYYY-MM-DD  
+类型: README  
+tags:
+  - 项目文档
+  - README
+  - CodeScribe
 ---
 ```
 
-`date` 使用生成当天日期。无法获取版本时，project 字段仅使用组件标识。
+---
+
+# 导出要求
+
+仅允许新增：
+
+- Frontmatter
+- 文件名
+- 保存路径
+
+除此之外，保持 README 正文完全一致：
+
+- 不修改内容
+- 不调整结构
+- 不重新排版
+- 不补充说明
+- 不删除内容
+
+保留 Markdown 原有格式，包括标题、表格、代码块、ASCII 流程图、Mermaid（如有）和图片引用。
+
+不要自动生成 Wiki Link（`[[...]]`）或修改图片引用。
 
 ---
 
-## 导出要求
+# 最终原则
 
-- 保持 README 内容不变
-- 不调整章节结构
-- 不修改业务内容
-- 仅进行 Obsidian Markdown 格式转换
-- 导出文件可直接放入 Obsidian Vault 使用
+导出属于格式转换，不属于内容生成。
+
+除 Frontmatter、文件命名和保存位置外，不修改 README 的任何正文内容。
