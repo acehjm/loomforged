@@ -209,19 +209,18 @@ log.error(HikLog.toLog(errorCode, "Failed to process request"), exception);
 
 ### 日志记录方式
 
-必须使用项目已有的 `HikLog.toLog` 标准形式。
+必须使用项目已有的 `HikLog.toLog` `HikLog.toLogWithParam` 标准形式。
 
 例如：
 
 ```java
 log.error(HikLog.toLog(errorCode, "Failed to execute task"), exception);
-log.warn(HikLog.toLog(errorCode, "Retrying external request"));
 log.info(HikLog.toLog("Task completed"));
 ```
 
 执行时：
 
-- 以项目中已经存在的 `HikLog.toLog` 方法签名为准。
+- 以项目中已经存在的 `HikLog.toLog`  `HikLog.toLogWithParam` 方法签名为准。
 - 不得自行创造不存在的重载方法。
 - 不得使用字符串拼接代替标准日志结构。
 - 异常对象应作为日志方法的独立参数传入。
@@ -308,12 +307,9 @@ ${component.log.path}/logs/...
 
 ## 生产配置
 
-检查被生产环境加载的配置，包括但不限于：
+检查被**生产环境**加载的配置，一般文件命名直接以为 `application.*` 或包含 `-prod`。
 
-```text
-application.yml
-application-prod.yml
-```
+禁止检查**开发环境**、**测试环境**的配置，一般文件命名包含 `-dev`、`-test`。
 
 ### 日志等级
 
