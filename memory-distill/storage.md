@@ -1,21 +1,21 @@
 # Storage
 
-定义 Global Memory 的存储位置、组织方式和内容格式。
+定义 Experience 的存储位置、组织方式和内容格式。
 
-Memory 的价值判断按照 `memory-policy.md` 执行。
+Experience 的价值判断按照 `memory-policy.md` 执行。
 
-## Global Memory
+## Experience 库
 
 根目录：
 
 ```text
-E:\资料\内容仓库\Agents\global-memory\
+E:\资料\内容仓库\Agents\experience\
 ```
 
 目录结构：
 
 ```text
-global-memory/
+experience/
 ├── index.md
 └── memory/
     ├── agent-design.md
@@ -25,13 +25,13 @@ global-memory/
 
 规则：
 
-- `index.md` 用于定位 Memory Space。
-- `memory/` 保存实际 Memory 内容。
+- `index.md` 用于定位 Experience Space。
+- `memory/` 保存实际 Experience 内容。
 - 不保存完整对话记录。
 
-## Memory Space
+## Experience Space
 
-Memory Space 用于组织同一主题下的长期经验，不绑定具体项目、工具或 Agent。
+Experience Space 用于组织同一主题下的长期经验，不绑定具体项目、工具或 Agent。
 
 文件命名：
 
@@ -66,9 +66,9 @@ updated_at: 2026-07-13
 - `created_at`：创建时间。
 - `updated_at`：更新时间。
 
-## Memory 条目
+## Experience 条目
 
-每条 Memory 使用递增 ID：
+每条 Experience 使用递增 ID：
 
 ```text
 M-0001
@@ -118,7 +118,7 @@ M-0002
 
 ### sources
 
-记录 Memory 来源。
+记录 Experience 来源。
 
 格式：
 
@@ -142,32 +142,32 @@ unavailable
 
 不得伪造来源。
 
-## Memory 替代
+## Experience 替代
 
-新 Memory 替代旧 Memory 时：
+新 Experience 替代旧 Experience 时：
 
-新 Memory 增加：
+新 Experience 增加：
 
 ```text
 - supersedes: M-0001
 ```
 
-旧 Memory 修改：
+旧 Experience 修改：
 
 ```text
 - status: superseded
 ```
 
-旧 Memory 保留，不直接删除。
+旧 Experience 保留，不直接删除。
 
 ## Index
 
-`index.md` 用于定位 Memory Space，不记录单条 Memory。
+`index.md` 用于定位 Experience Space，不记录单条 Experience。
 
 格式：
 
 ```markdown
-# Global Memory Index
+# Experience Index
 
 - agent-design｜Agent、Skill、Memory 相关经验｜memory/agent-design.md
 - requirement-analysis｜需求分析和方案设计经验｜memory/requirement-analysis.md
@@ -177,13 +177,13 @@ unavailable
 
 写入前：
 
-1. 读取目标 Memory Space 最新内容。
-2. 检查已有相关 Memory。
+1. 读取目标 Experience Space 最新内容。
+2. 检查已有相关 Experience。
 3. 按 `memory-policy.md` 决定新增、更新、替代或跳过。
 
 写入时：
 
-- 只修改目标 Memory Space 和必要索引。
+- 只修改目标 Experience Space 和必要索引。
 - 保留已有有效内容。
-- 不删除历史 Memory。
+- 不删除历史 Experience。
 - 不修改无关内容。

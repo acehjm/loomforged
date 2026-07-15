@@ -1,28 +1,28 @@
 ---
 name: memory-recall
-description: 从 Global Memory 中唤醒与当前任务相关的历史经验，为当前分析、设计和决策提供参考。
+description: 从经验资产库（Experience）中唤醒与当前任务相关的历史经验，为当前分析、设计和决策提供参考。
 ---
 # Memory Recall
 
-从长期沉淀的 Global Memory 中寻找与当前任务相关的工程经验，帮助 Agent 复用已有实践、方法和决策。
+从长期沉淀的经验资产库（Experience）中寻找与当前任务相关的工程经验，帮助 Agent 复用已有实践、方法和决策。
 
 Memory Recall 不提供当前问题的直接答案，而是通过已有经验辅助当前任务分析和判断。
 
-## Global Memory
+## 经验资产库（Experience）
 
-Global Memory 位置：
+Experience 位置：
 
 ```text
-E:\资料\内容仓库\Agents\global-memory\
+E:\资料\内容仓库\Agents\experience\
 ```
 
 入口文件：
 
 ```text
-E:\资料\内容仓库\Agents\global-memory\index.md
+E:\资料\内容仓库\Agents\experience\index.md
 ```
 
-通过入口文件了解已有经验范围，并定位相关 Memory。
+通过入口文件了解已有经验范围，并定位相关 Experience。
 
 ## 使用场景
 
@@ -43,7 +43,7 @@ Recall 面向当前任务寻找经验，而不是查找某个项目、文件或�
 
 不要因为关键词相同而返回无实际帮助的内容。
 
-历史 Memory 仅作为参考，需要结合当前上下文判断适用性，不得直接作为当前任务的最终结论。
+历史 Experience 仅作为参考，需要结合当前上下文判断适用性，不得直接作为当前任务的最终结论。
 
 ## 执行流程
 
@@ -51,15 +51,15 @@ Recall 面向当前任务寻找经验，而不是查找某个项目、文件或�
 
 识别当前需要解决的问题、关键主题、业务或技术背景，以及可能需要参考的经验方向。
 
-### 2. 查找相关 Memory
+### 2. 查找相关 Experience
 
-读取 Global Memory 入口，了解已有经验范围，并查找与当前任务相关的 Memory。
+读取 Experience 库入口，了解已有经验范围，并查找与当前任务相关的 Experience。
 
 查找时关注经验价值，而不是简单匹配标题或关键词。
 
 ### 3. 判断参考价值
 
-对找到的 Memory 判断：
+对找到的 Experience 判断：
 
 - 与当前任务的关联原因。
 - 可以借鉴的方法或决策。
@@ -89,7 +89,7 @@ Recall 面向当前任务寻找经验，而不是查找某个项目、文件或�
 说明当前任务可以如何借鉴。
 ```
 
-如果未找到相关 Memory：
+如果未找到相关 Experience：
 
 ```text
 未找到相关历史经验，请基于当前上下文继续分析。
@@ -99,6 +99,6 @@ Recall 面向当前任务寻找经验，而不是查找某个项目、文件或�
 
 ## 约束
 
-`memory-recall` 仅负责读取和引用已有 Memory，不参与 Memory 生命周期管理；不得修改、创建、删除或改变 Memory 原意。
+`memory-recall` 仅负责读取和引用已有 Experience，不参与 Experience 生命周期管理；不得修改、创建、删除或改变 Experience 原意。
 
 如果当前任务形成新的长期价值经验，应使用 `memory-distill` 进行沉淀。

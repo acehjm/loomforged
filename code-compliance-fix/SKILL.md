@@ -2,7 +2,6 @@
 name: code-compliance-fix
 description: 检查并修复项目源码中的错误码、日志、代码格式、生产配置和可选依赖合规问题。仅处理合规性问题，不修改业务逻辑。
 ---
-
 # Code Compliance Fix
 
 检查定制项目源码的合规性问题并直接修复。
