@@ -3,11 +3,14 @@ goal_id: G-001
 status: draft
 phase: planning
 updated: YYYY-MM-DD
+waiting_for: none
+waiting_detail: ""
+blocked_reason: ""
 ---
 
 # 目标契约
 
-> 将本文件从模板改为真实目标后再开始编码。`active` 会启用 Stop Hook 状态门禁；含义见项目 `CLAUDE.md`。
+> 将本文件从模板改为真实目标后再开始编码。除 `draft` 外的状态都会接受 Stop Hook 一致性检查；含义见项目 `CLAUDE.md`。
 
 ## 目标
 
@@ -48,8 +51,9 @@ updated: YYYY-MM-DD
 
 ## 停止条件
 
-- 需要用户做会改变实现方向的选择时，将目标设为 `waiting_user` 并说明选项与影响。
-- 缺少权限、外部依赖或信息且无法安全绕过时，将目标设为 `blocked` 并记录证据。
+- 需要用户做会改变实现方向的选择时，将状态设为 `waiting_user`、`waiting_for: direction`，并在 `waiting_detail` 说明选项与影响。
+- 自动门禁通过后等待业务回测时，将状态设为 `waiting_user`、`waiting_for: acceptance`，并在 `waiting_detail` 说明回测步骤。
+- 缺少权限、外部依赖或信息且无法安全绕过时，将目标设为 `blocked`，在 `blocked_reason` 记录真实阻断与证据。
 - 达到约定执行边界仍未完成时，停止并交接剩余任务、风险和阻断。
 
 ## 需要用户确认

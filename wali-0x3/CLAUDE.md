@@ -40,6 +40,8 @@
 - `reviewer`：独立审查；默认只修改 `docs/wali-0x3/issues.md` 等治理文件，不直接修实现。
 - `tester`：测试设计、复现、自动化测试和回归验证。
 
+普通主会话按本文件承担 Coordinator 职责；需要以隔离的专用 Coordinator 系统提示启动时，使用 `claude --agent coordinator`。Coordinator 可以调用 `.claude/agents/` 中的角色，但仍须遵守“最简单执行方式”原则。
+
 实现者不得作为唯一检查者。需要独立判断时，交给新的 Reviewer 或 Tester 上下文。
 
 ## 持久状态
@@ -57,9 +59,9 @@
 
 - `draft`：目标仍在建立或等待确认，Stop Hook 不阻塞。
 - `active`：当前阶段正在执行，Stop Hook 检查状态一致性。
-- `waiting_user`：自动门禁已满足，等待用户业务验收。
-- `blocked`：存在已记录且无法自行解决的真实阻断。
-- `done`：自动证据和用户验收均已完成。
+- `waiting_user`：等待会改变实现方向的用户决定，或自动门禁满足后等待业务验收；必须填写 `waiting_for` 和 `waiting_detail`。
+- `blocked`：存在已记录且无法自行解决的真实阻断；必须填写 `blocked_reason`。
+- `done`：自动证据和用户验收均已完成；Stop Hook 仍会复核任务、问题和证据，不能靠改状态绕过。
 
 不得用虚假的 `blocked`、`waiting_user` 或状态降级绕过检查。
 
@@ -73,6 +75,14 @@
 - 自动条件满足后，将目标设为 `waiting_user`；只有用户真实回测通过后才能设为 `done`。
 
 `/goal` 用于持续推进有明确终点的当前阶段；`/loop` 只用于等待 CI、部署、评论等外部状态，不用于反复驱动普通编码。
+
+本仓库当前可用的 WALI 配置检查命令：
+
+- `python3 .claude/hooks/test_wali_stop.py -v`：运行 Stop Hook 回归测试。
+- `python3 .claude/hooks/wali_stop.py --project-root .`：检查当前 WALI 状态。
+- `python3 -m json.tool .claude/settings.json`：验证项目设置 JSON。
+
+业务项目的构建、测试和静态检查命令必须在初始化目标时从该项目的真实配置中发现，并写入 `goal.md` 与 `progress.md`；上述命令不替代业务项目验证。
 
 ## 会话结束
 

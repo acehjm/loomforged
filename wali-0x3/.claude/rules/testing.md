@@ -2,6 +2,8 @@
 paths:
   - "**/{test,tests,__tests__,spec,specs}/**/*"
   - "**/*.{test,spec}.{js,jsx,ts,tsx,py,rb,go,rs,java,kt}"
+  - "**/test_*.py"
+  - "**/*_test.py"
 ---
 
 # 测试规则

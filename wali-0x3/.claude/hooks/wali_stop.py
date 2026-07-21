@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Deterministic state-consistency gate for active WALI goals.
+"""Deterministic state-consistency gate for WALI goal transitions.
 
-The hook does not claim that project tests passed. It verifies that an active
-goal's Markdown state is internally complete enough for Claude to stop. Actual
-project commands and their evidence remain defined by the goal contract.
+The hook does not claim that project tests passed. It verifies that Markdown
+state and transition evidence are internally consistent. Actual project
+commands and their evidence remain defined by the goal contract.
 """
 
 from __future__ import annotations
@@ -19,14 +19,26 @@ from typing import Iterable
 
 STATE_DIR = Path("docs/wali-0x3")
 REQUIRED_FILES = ("goal.md", "todo.md", "issues.md", "progress.md")
-VERIFIED_STATES = {"verified", "已验证", "pass", "passed"}
-DONE_STATES = {"done", "完成"}
-CLOSED_STATES = {"closed", "已关闭"}
-AUTOMATIC_TYPES = {"automatic", "auto", "自动"}
-HUMAN_TYPES = {"human", "人工", "用户"}
-REQUIRED_VALUES = {"required", "必要", "true", "yes"}
-BLOCKER_VALUES = {"blocker", "阻断"}
-EMPTY_EVIDENCE = {"", "-", "—", "待补充", "待验证", "pending", "n/a"}
+GOAL_STATUSES = {"draft", "active", "waiting_user", "blocked", "done"}
+WAIT_REASONS = {"none", "direction", "acceptance"}
+CRITERION_TYPES = {"automatic", "human"}
+CRITERION_STATES = {"pending", "verified"}
+TASK_NECESSITIES = {"required", "optional"}
+TASK_STATES = {"pending", "working", "review", "blocked", "done"}
+ISSUE_SEVERITIES = {"blocker", "high", "medium", "low"}
+ISSUE_STATES = {"open", "fixing", "verify", "closed"}
+INDEPENDENT_VERIFIERS = {"reviewer", "tester", "user"}
+EMPTY_EVIDENCE = {
+    "",
+    "-",
+    "—",
+    "待补充",
+    "待验证",
+    "待用户验收",
+    "待记录",
+    "pending",
+    "n/a",
+}
 
 
 def _without_comments(text: str) -> str:
@@ -49,8 +61,57 @@ def _frontmatter(text: str) -> dict[str, str]:
     return values
 
 
+class TableParseError(ValueError):
+    """Raised when a WALI state table cannot be parsed without data loss."""
+
+
 def _cells(line: str) -> list[str]:
-    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+    """Split a Markdown table row while preserving escaped and code-span pipes."""
+
+    content = line.strip()
+    if content.startswith("|"):
+        content = content[1:]
+    if content.endswith("|"):
+        content = content[:-1]
+
+    cells: list[str] = []
+    current: list[str] = []
+    code_delimiter = 0
+    index = 0
+
+    while index < len(content):
+        character = content[index]
+        if character == "\\" and index + 1 < len(content):
+            next_character = content[index + 1]
+            if next_character == "|":
+                current.append("|")
+            else:
+                current.extend((character, next_character))
+            index += 2
+            continue
+
+        if character == "`":
+            run_end = index
+            while run_end < len(content) and content[run_end] == "`":
+                run_end += 1
+            run_length = run_end - index
+            if code_delimiter == 0:
+                code_delimiter = run_length
+            elif code_delimiter == run_length:
+                code_delimiter = 0
+            current.append(content[index:run_end])
+            index = run_end
+            continue
+
+        if character == "|" and code_delimiter == 0:
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+        index += 1
+
+    cells.append("".join(current).strip())
+    return cells
 
 
 def _is_separator(cells: Iterable[str]) -> bool:
@@ -58,7 +119,7 @@ def _is_separator(cells: Iterable[str]) -> bool:
     return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
 
 
-def _table_rows(text: str) -> list[dict[str, str]]:
+def _table_rows(text: str, source: str) -> list[dict[str, str]]:
     """Return Markdown table rows keyed by their header labels."""
 
     lines = _without_comments(text).splitlines()
@@ -79,8 +140,11 @@ def _table_rows(text: str) -> list[dict[str, str]]:
         index += 2
         while index < len(lines) and lines[index].lstrip().startswith("|"):
             values = _cells(lines[index])
-            if len(values) == len(headers):
-                rows.append(dict(zip(headers, values)))
+            if len(values) != len(headers):
+                raise TableParseError(
+                    f"{source}:{index + 1} 表格列数错误：期望 {len(headers)}，实际 {len(values)}"
+                )
+            rows.append(dict(zip(headers, values)))
             index += 1
 
     return rows
@@ -98,8 +162,106 @@ def _has_evidence(value: str) -> bool:
     return _state(value) not in EMPTY_EVIDENCE
 
 
+def _completion_state(
+    state_root: Path, goal_text: str, require_human: bool
+) -> tuple[list[str], list[dict[str, str]]]:
+    reasons: list[str] = []
+    try:
+        goal_rows = [
+            row
+            for row in _table_rows(goal_text, "goal.md")
+            if row.get("ID", "").startswith("AC-")
+        ]
+        todo_rows = [
+            row
+            for row in _table_rows(_read(state_root / "todo.md"), "todo.md")
+            if row.get("ID", "").startswith("T-")
+        ]
+        issue_rows = [
+            row
+            for row in _table_rows(_read(state_root / "issues.md"), "issues.md")
+            if row.get("ID", "").startswith("I-")
+        ]
+    except TableParseError as error:
+        return [str(error)], []
+
+    for row in goal_rows:
+        criterion_id = row.get("ID", "未知 AC")
+        criterion_type = _state(row.get("类型", ""))
+        criterion_status = _state(row.get("状态", ""))
+        if criterion_type not in CRITERION_TYPES:
+            reasons.append(f"{criterion_id} 类型必须是 automatic 或 human")
+        if criterion_status not in CRITERION_STATES:
+            reasons.append(f"{criterion_id} 状态必须是 pending 或 verified")
+
+    automatic_rows = [row for row in goal_rows if _state(row.get("类型", "")) == "automatic"]
+    human_rows = [row for row in goal_rows if _state(row.get("类型", "")) == "human"]
+    if not automatic_rows:
+        reasons.append("目标至少需要一项 automatic 验收条件")
+    if not human_rows:
+        reasons.append("目标至少需要一项 human 验收条件以保留用户最终验收权")
+
+    for row in automatic_rows:
+        criterion_id = row.get("ID", "未知 AC")
+        if _state(row.get("状态", "")) != "verified":
+            reasons.append(f"{criterion_id} 尚未 verified")
+        elif not _has_evidence(row.get("证据", "")):
+            reasons.append(f"{criterion_id} 已标记 verified，但缺少证据")
+
+    if require_human:
+        for row in human_rows:
+            criterion_id = row.get("ID", "未知 human AC")
+            if _state(row.get("状态", "")) != "verified":
+                reasons.append(f"{criterion_id} 尚未获得用户验收")
+            elif not _has_evidence(row.get("证据", "")):
+                reasons.append(f"{criterion_id} 已标记 verified，但缺少用户验收证据")
+
+    for row in todo_rows:
+        task_id = row.get("ID", "未知任务")
+        necessity = _state(row.get("必要性", ""))
+        task_status = _state(row.get("状态", ""))
+        if necessity not in TASK_NECESSITIES:
+            reasons.append(f"{task_id} 必要性必须是 required 或 optional")
+        if task_status not in TASK_STATES:
+            reasons.append(f"{task_id} 状态不是允许的任务状态")
+
+    required_rows = [row for row in todo_rows if _state(row.get("必要性", "")) == "required"]
+    if not required_rows:
+        reasons.append("目标至少需要一项 required 任务")
+    for row in required_rows:
+        task_id = row.get("ID", "未知任务")
+        if _state(row.get("状态", "")) != "done":
+            reasons.append(f"required 任务 {task_id} 尚未 done")
+        elif not _has_evidence(row.get("执行结果/证据", "")):
+            reasons.append(f"required 任务 {task_id} 已标记 done，但缺少执行结果/证据")
+        elif _state(row.get("独立验证者", "")) not in INDEPENDENT_VERIFIERS:
+            reasons.append(
+                f"required 任务 {task_id} 必须记录 reviewer、tester 或 user 作为独立验证者"
+            )
+
+    for row in issue_rows:
+        issue_id = row.get("ID", "未知问题")
+        severity = _state(row.get("严重程度", ""))
+        issue_status = _state(row.get("状态", ""))
+        if severity not in ISSUE_SEVERITIES:
+            reasons.append(f"{issue_id} 严重程度不是允许值")
+        if issue_status not in ISSUE_STATES:
+            reasons.append(f"{issue_id} 状态不是允许的问题状态")
+        if severity == "blocker" and issue_status != "closed":
+            reasons.append(f"存在未关闭的 blocker：{issue_id}")
+        if issue_status == "closed":
+            if _state(row.get("验证者", "")) not in INDEPENDENT_VERIFIERS:
+                reasons.append(
+                    f"已关闭问题 {issue_id} 必须记录 reviewer、tester 或 user 作为验证者"
+                )
+            if not _has_evidence(row.get("验证结果", "")):
+                reasons.append(f"已关闭问题 {issue_id} 缺少独立验证结果")
+
+    return reasons, human_rows
+
+
 def evaluate_project(project_root: Path) -> list[str]:
-    """Return blocking reasons for an active goal; return [] when not active."""
+    """Return reasons that make the current WALI goal state inconsistent."""
 
     state_root = project_root / STATE_DIR
     goal_path = state_root / "goal.md"
@@ -107,9 +269,12 @@ def evaluate_project(project_root: Path) -> list[str]:
         return []
 
     goal_text = _read(goal_path)
-    goal_status = _state(_frontmatter(goal_text).get("status", ""))
-    if goal_status != "active":
+    metadata = _frontmatter(goal_text)
+    goal_status = _state(metadata.get("status", ""))
+    if goal_status == "draft":
         return []
+    if goal_status not in GOAL_STATUSES:
+        return ["goal status 必须是 draft、active、waiting_user、blocked 或 done"]
 
     reasons: list[str] = []
     missing = [name for name in REQUIRED_FILES if not (state_root / name).exists()]
@@ -117,79 +282,48 @@ def evaluate_project(project_root: Path) -> list[str]:
         reasons.append(f"缺少 WALI 状态文件：{', '.join(missing)}")
         return reasons
 
-    goal_rows = [row for row in _table_rows(goal_text) if row.get("ID", "").startswith("AC-")]
-    automatic_rows = [
-        row for row in goal_rows if _state(row.get("类型", "")) in AUTOMATIC_TYPES
-    ]
-    human_rows = [row for row in goal_rows if _state(row.get("类型", "")) in HUMAN_TYPES]
-
-    if not automatic_rows:
-        reasons.append("active 目标至少需要一项 automatic 验收条件")
-    if not human_rows:
-        reasons.append("目标至少需要一项 human 验收条件以保留用户最终验收权")
-
-    for row in automatic_rows:
-        criterion_id = row.get("ID", "未知 AC")
-        if _state(row.get("状态", "")) not in VERIFIED_STATES:
-            reasons.append(f"{criterion_id} 尚未 verified")
-        elif not _has_evidence(row.get("证据", "")):
-            reasons.append(f"{criterion_id} 已标记 verified，但缺少证据")
-
-    todo_rows = [
-        row
-        for row in _table_rows(_read(state_root / "todo.md"))
-        if row.get("ID", "").startswith("T-")
-    ]
-    required_rows = [
-        row for row in todo_rows if _state(row.get("必要性", "")) in REQUIRED_VALUES
-    ]
-    if not required_rows:
-        reasons.append("active 目标至少需要一项 required 任务")
-
-    for row in required_rows:
-        task_id = row.get("ID", "未知任务")
-        if _state(row.get("状态", "")) not in DONE_STATES:
-            reasons.append(f"required 任务 {task_id} 尚未 done")
-        elif not _has_evidence(row.get("执行结果/证据", "")):
-            reasons.append(f"required 任务 {task_id} 已标记 done，但缺少执行结果/证据")
-
-    issue_rows = [
-        row
-        for row in _table_rows(_read(state_root / "issues.md"))
-        if row.get("ID", "").startswith("I-")
-    ]
-    for row in issue_rows:
-        if (
-            _state(row.get("严重程度", "")) in BLOCKER_VALUES
-            and _state(row.get("状态", "")) not in CLOSED_STATES
-        ):
-            reasons.append(f"存在未关闭的 blocker：{row.get('ID', '未知问题')}")
-
-    if reasons:
+    if goal_status == "blocked":
+        if not _has_evidence(metadata.get("blocked_reason", "")):
+            reasons.append("blocked 目标必须在 blocked_reason 记录真实阻断")
         return reasons
 
-    pending_human = [
-        row for row in human_rows if _state(row.get("状态", "")) not in VERIFIED_STATES
-    ]
-    missing_human_evidence = [
-        row
-        for row in human_rows
-        if _state(row.get("状态", "")) in VERIFIED_STATES
-        and not _has_evidence(row.get("证据", ""))
-    ]
-    for row in missing_human_evidence:
-        reasons.append(f"{row.get('ID', '未知 human AC')} 已标记 verified，但缺少用户验收证据")
+    waiting_for = _state(metadata.get("waiting_for", "none"))
+    waiting_detail = metadata.get("waiting_detail", "")
+    if goal_status == "waiting_user":
+        if waiting_for not in {"direction", "acceptance"}:
+            reasons.append("waiting_user 目标的 waiting_for 必须是 direction 或 acceptance")
+            return reasons
+        if not _has_evidence(waiting_detail):
+            reasons.append("waiting_user 目标必须在 waiting_detail 记录问题或回测要求")
+            return reasons
+        if waiting_for == "direction":
+            return []
 
-    if reasons:
+        completion_reasons, human_rows = _completion_state(
+            state_root, goal_text, require_human=False
+        )
+        if completion_reasons:
+            return completion_reasons
+        if all(_state(row.get("状态", "")) == "verified" for row in human_rows):
+            return ["用户验收已有证据；将 goal 状态改为 done 并更新 progress.md"]
+        return []
+
+    if waiting_for != "none":
+        reasons.append(f"{goal_status} 目标的 waiting_for 必须是 none")
+
+    completion_reasons, human_rows = _completion_state(
+        state_root, goal_text, require_human=goal_status == "done"
+    )
+    reasons.extend(completion_reasons)
+    if reasons or goal_status == "done":
         return reasons
+
+    pending_human = [row for row in human_rows if _state(row.get("状态", "")) != "verified"]
     if pending_human:
         return [
-            "自动门禁已满足，但仍需用户验收；将 goal 状态改为 waiting_user，更新 progress.md，并请求用户回测"
+            "自动门禁已满足但仍需用户验收；将 goal 状态改为 waiting_user、waiting_for 改为 acceptance，填写 waiting_detail 并请求用户回测"
         ]
-
-    return [
-        "自动条件和用户验收均有证据；将 goal 状态改为 done，更新 progress.md，并给出逐项验收摘要"
-    ]
+    return ["全部验收已有证据；将 goal 状态改为 done 并更新 progress.md"]
 
 
 def _run_hook(project_root: Path) -> int:
@@ -206,7 +340,7 @@ def _run_hook(project_root: Path) -> int:
 
     reasons = evaluate_project(project_root)
     if reasons:
-        reason = "WALI active 目标尚未达到可停止状态：\n- " + "\n- ".join(reasons)
+        reason = "WALI 状态门禁尚未满足：\n- " + "\n- ".join(reasons)
         print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
     return 0
 
@@ -232,7 +366,7 @@ def main() -> int:
             print(f"- {reason}")
         return 1
 
-    print("WALI 检查通过：当前没有 active 目标，或状态门禁无需阻止停止。")
+    print("WALI 检查通过：当前状态允许停止。")
     return 0
 
 
