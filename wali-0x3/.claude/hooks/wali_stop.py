@@ -238,6 +238,8 @@ def _completion_state(
             reasons.append(
                 f"required 任务 {task_id} 必须记录 reviewer、tester 或 user 作为独立验证者"
             )
+        elif _state(row.get("独立验证者", "")) == _state(row.get("负责人", "")):
+            reasons.append(f"required 任务 {task_id} 的独立验证者必须与负责人不同")
 
     for row in issue_rows:
         issue_id = row.get("ID", "未知问题")
@@ -254,6 +256,8 @@ def _completion_state(
                 reasons.append(
                     f"已关闭问题 {issue_id} 必须记录 reviewer、tester 或 user 作为验证者"
                 )
+            elif _state(row.get("验证者", "")) == _state(row.get("修复负责人", "")):
+                reasons.append(f"已关闭问题 {issue_id} 的验证者必须与修复负责人不同")
             if not _has_evidence(row.get("验证结果", "")):
                 reasons.append(f"已关闭问题 {issue_id} 缺少独立验证结果")
 

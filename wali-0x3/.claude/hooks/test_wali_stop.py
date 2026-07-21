@@ -39,9 +39,11 @@ class WaliStopTest(unittest.TestCase):
         blocked_reason: str = "",
         automatic_status: str = "verified",
         human_status: str = "pending",
+        task_owner: str = "developer",
         task_status: str = "done",
         task_verifier: str = "tester",
         issue_status: str = "closed",
+        issue_fixer: str = "developer",
         issue_verifier: str = "tester",
         issue_validation: str = "regression pass",
     ) -> None:
@@ -63,14 +65,14 @@ blocked_reason: "{blocked_reason}"
             "todo.md",
             f"""| ID | 关联 AC | 任务 | 负责人 | 必要性 | 状态 | 依赖 | 允许修改范围 | 任务验收条件 | 执行结果/证据 | 独立验证者 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-001 | AC-01 | 实现 | developer | required | {task_status} | 无 | src | 测试通过 | test exit 0 | {task_verifier} |
+| T-001 | AC-01 | 实现 | {task_owner} | required | {task_status} | 无 | src | 测试通过 | test exit 0 | {task_verifier} |
 """,
         )
         self.write(
             "issues.md",
             f"""| ID | 来源 | 关联任务 | 关联 AC | 严重程度 | 状态 | 问题描述 | 修复负责人 | 复现/证据 | 验证者 | 验证结果 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| I-001 | tester | T-001 | AC-01 | blocker | {issue_status} | 示例 | developer | repro | {issue_verifier} | {issue_validation} |
+| I-001 | tester | T-001 | AC-01 | blocker | {issue_status} | 示例 | {issue_fixer} | repro | {issue_verifier} | {issue_validation} |
 """,
         )
         self.write("progress.md", "# 交接快照\n")
@@ -124,6 +126,16 @@ blocked_reason: "{blocked_reason}"
         self.seed(issue_verifier="developer")
         reasons = wali_stop.evaluate_project(self.root)
         self.assertTrue(any("I-001" in reason and "验证者" in reason for reason in reasons))
+
+    def test_tester_cannot_verify_its_own_required_task(self) -> None:
+        self.seed(task_owner="tester", task_verifier="tester")
+        reasons = wali_stop.evaluate_project(self.root)
+        self.assertTrue(any("T-001" in reason and "负责人不同" in reason for reason in reasons))
+
+    def test_reviewer_cannot_verify_its_own_issue_fix(self) -> None:
+        self.seed(issue_fixer="reviewer", issue_verifier="reviewer")
+        reasons = wali_stop.evaluate_project(self.root)
+        self.assertTrue(any("I-001" in reason and "修复负责人不同" in reason for reason in reasons))
 
     def test_escaped_pipe_in_issue_cell_does_not_hide_blocker(self) -> None:
         self.seed(issue_status="open")
