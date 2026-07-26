@@ -1031,6 +1031,7 @@ project/
 │   │       └── INDEX.md
 │   ├── hooks/
 │   │   ├── wali-doctor.py
+│   │   ├── wali_board.py
 │   │   ├── wali_policy.py
 │   │   ├── wali_graph.py
 │   │   ├── wali_stop.py
@@ -1041,20 +1042,25 @@ project/
 │   │   ├── test_wali_stop.py
 │   │   ├── test_wali_supervision.py
 │   │   ├── test_wali_svn.py
-│   │   └── test_wali_doctor.py
+│   │   ├── test_wali_doctor.py
+│   │   └── test_wali_board.py
 │   ├── skills/
 │   │   ├── wali-start/
 │   │   ├── wali-resume/
 │   │   ├── wali-inspect/
 │   │   └── wali-handoff/
 │   └── settings.json
+├── waliwali/                       # 品牌源文件；看板已内嵌，不是运行依赖
+│   ├── agent.png
+│   └── mutil-agents.png
 └── docs/
     └── wali-0x3/
         ├── goal.md
         ├── spec.md
         ├── todo.md
         ├── issues.md
-        └── handoff.md
+        ├── handoff.md
+        └── wali-board.html
 ```
 
 各部分职责：
@@ -1073,7 +1079,7 @@ CLAUDE.md
 跨项目稳定、低频变化的静态参考，包括 WALI 运行说明、Developer 使用的开发模板，以及 Developer/Reviewer 使用的企业内部代码检查基线。通过 `INDEX.md` 按角色与场景选择性读取，不保存具体项目知识或运行状态。
 
 .claude/hooks/
-只读部署诊断、阶段契约与工具副作用约束、共享 SVN 边界、基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
+只读部署诊断、项目看板服务、阶段契约与工具副作用约束、共享 SVN 边界、基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
 
 .claude/skills/
 只在特定任务中需要的知识和多步骤流程。

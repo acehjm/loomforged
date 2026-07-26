@@ -338,6 +338,7 @@ wali-0x3/
 │   │   └── tester.md
 │   ├── hooks/
 │   │   ├── wali-doctor.py
+│   │   ├── wali_board.py
 │   │   ├── wali_graph.py
 │   │   ├── wali_policy.py
 │   │   ├── wali_stop.py
@@ -358,12 +359,16 @@ wali-0x3/
 │       ├── wali-resume/
 │       ├── wali-inspect/
 │       └── wali-handoff/
+├── waliwali/                       # 品牌源文件；看板已内嵌，不是运行依赖
+│   ├── agent.png
+│   └── mutil-agents.png
 └── docs/wali-0x3/
     ├── goal.md
     ├── spec.md
     ├── todo.md
     ├── issues.md
-    └── handoff.md
+    ├── handoff.md
+    └── wali-board.html
 ```
 
 ## 13. 部署到 SVN 项目
@@ -430,10 +435,46 @@ python3 -m unittest -v \
   test_wali_stop.py \
   test_wali_supervision.py \
   test_wali_svn.py \
-  test_wali_doctor.py
+  test_wali_doctor.py \
+  test_wali_board.py
 ```
 
-### 13.5 开始第一个 Goal
+### 13.5 启动只读看板
+
+在目标 SVN 工作副本根运行：
+
+```bash
+python3 .claude/hooks/wali_board.py --project-root . --open
+```
+
+命令会启动持续运行的本地只读服务，并由 `--open` 自动打开浏览器。终端出现以下提示后，看板即已开始工作：
+
+```text
+WALI 只读看板：http://127.0.0.1:8765/
+每 1 秒读取一次项目状态；按 Ctrl-C 停止。
+```
+
+看板采用 1 秒轮询，因此属于准实时更新：
+
+- 服务运行期间，浏览器每 1 秒重新聚合 Goal、Task、Issue、Agent 和可选运行事件。
+- 状态文件发生变化后无需刷新页面，通常会在下一次轮询中显示。
+- 标签页进入后台时暂停轮询，重新显示后立即读取最新状态。
+- 某次读取失败时保留最后一次有效状态，并在后续轮询中自动恢复。
+- 关闭浏览器不会停止服务；返回启动它的终端并按 `Ctrl-C` 才会结束。
+
+启动器只绑定本机地址，使用 Python 标准库提供页面和聚合状态 API。页面不会修改项目状态，也不展示修改范围、证据文件或 SVN 内部路径。看板使用的两张品牌图已经压缩并内嵌到 HTML，部署时不需要复制 `waliwali/`。
+
+看板运行时实际只依赖 `.claude/hooks/wali_board.py` 和 `docs/wali-0x3/wali-board.html`。保留 Python 服务的原因是普通浏览器页面无权自行读取项目工作区；若增加双击启动脚本，只是把同一条命令包装起来，并不会减少运行依赖。
+
+Agent 运行事件由监督 Hook 在真实 SVN 工作副本中按需生成，不需要人工创建或复制。尚无运行事件时，看板继续根据任务负责人和任务状态展示团队，并把运行状态显示为“无近期活动”。
+
+默认地址是 `http://127.0.0.1:8765/`。如果端口被占用，可以指定其他端口：
+
+```bash
+python3 .claude/hooks/wali_board.py --project-root . --port 8877 --open
+```
+
+### 13.6 开始第一个 Goal
 
 从 SVN 工作副本根调用：
 
@@ -487,6 +528,12 @@ python3 .claude/hooks/wali_graph.py --project-root . parallel
 python3 .claude/hooks/wali_graph.py --project-root . mermaid
 python3 .claude/hooks/wali_supervision.py --project-root . status
 python3 .claude/hooks/wali_stop.py --project-root .
+```
+
+持续查看只读项目状态：
+
+```bash
+python3 .claude/hooks/wali_board.py --project-root . --open
 ```
 
 会产生治理状态输出的 `baseline`、`carry`、`digest` 和 `handoff-digest` 只能在对应阶段、写入范围和工作流中使用，不应作为普通只读命令随意执行。
@@ -544,6 +591,7 @@ Hook、SVN 客户端与服务端、用户、项目命令及其依赖属于可信
 - [Task 模板](docs/wali-0x3/todo.md)：依赖、范围与执行证据。
 - [Issue 模板](docs/wali-0x3/issues.md)：发现、修复和独立复验。
 - [Handoff 模板](docs/wali-0x3/handoff.md)：最新恢复快照。
+- [只读项目看板](docs/wali-0x3/wali-board.html)：由本地启动器提供数据，每 1 秒展示 Goal、Task、Issue 与 Agent 状态。
 
 ## 19. 品牌关系
 

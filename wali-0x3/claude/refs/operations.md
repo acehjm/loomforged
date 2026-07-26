@@ -108,11 +108,12 @@ svn commit (-m|--message) <literal> -- <exact-leaf-path>...
 - `python3 .claude/hooks/wali_graph.py --project-root . parallel`
 - `python3 .claude/hooks/wali_graph.py --project-root . mermaid`
 - `python3 .claude/hooks/wali_supervision.py --project-root . status`
+- `python3 .claude/hooks/wali_board.py --project-root . --open`
 - `python3 .claude/hooks/wali_stop.py --project-root .`
 - `python3 -m json.tool .claude/settings.json`
 
 在 `.claude/hooks/` 中运行完整控制面测试：
 
 ```text
-python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py test_wali_doctor.py
+python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py test_wali_doctor.py test_wali_board.py
 ```
