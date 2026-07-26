@@ -96,6 +96,7 @@ svn commit (-m|--message) <literal> -- <exact-leaf-path>...
 
 在项目根运行，测试命令除外：
 
+- `python3 .claude/hooks/wali-doctor.py --project-root .`
 - `python3 .claude/hooks/wali_policy.py check`
 - `python3 .claude/hooks/wali_policy.py audit`
 - `python3 .claude/hooks/wali_policy.py baseline`
@@ -113,5 +114,5 @@ svn commit (-m|--message) <literal> -- <exact-leaf-path>...
 在 `.claude/hooks/` 中运行完整控制面测试：
 
 ```text
-python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py
+python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py test_wali_doctor.py
 ```

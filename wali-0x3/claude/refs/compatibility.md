@@ -24,7 +24,7 @@ WALI 采用功能检测，不用易过期的固定版本号冒充兼容性。部
 - Agent frontmatter 的 `model`、`effort`、`tools` 和 `permissionMode`。
 - 路径限定 Rules。
 - `disableSkillShellExecution`。
-- Python 3 标准库、SVN 1.9+ CLI，以及平台文件锁：POSIX 的 `fcntl.flock` 或 Windows 的 `msvcrt.locking`。
+- Python 3.9+ 标准库、SVN 1.9+ CLI，以及平台文件锁：POSIX 的 `fcntl.flock` 或 Windows 的 `msvcrt.locking`。
 
 缺少任一核心 Policy/Stop 能力时，不得进入 `implementing`、`inspecting` 或 `delivering`，应升级 Claude Code 或停止部署。
 
@@ -59,15 +59,14 @@ wali_schema: 1
 
 部署后依次核对：
 
-1. `claude --version` 能正常运行，`svn --version --quiet` 不低于 1.9。
+1. 运行 `python3 .claude/hooks/wali-doctor.py --project-root .`；它只执行读取检查，不创建文件或修改 SVN 属性。
 2. `/doctor` 不报告配置、Agent 或 Hook 错误。
 3. `/memory` 只显示预期的常驻说明；`engineering.md`、`testing.md` 应按路径加载。
 4. `/hooks` 显示 `PreToolUse`、`PostToolUse`、`Stop`，启用 Agent Teams 时还显示三类监督 Hook。
-5. `python3 .claude/hooks/wali_policy.py check` 能识别 `wali_schema: 1`。
-6. 在 `.claude/hooks/` 运行完整 WALI 回归测试。
-7. 在真实 SVN 工作副本根运行只读 `svn info`、`svn status` 和 `svn diff --internal-diff`。
-8. 若项目使用原生 Ignore，确认普通 `svn status` 隐藏匹配产物，而带 `--no-ignore` 和清空个人 `global-ignores` 的状态仍将其标记为 `ignored`。
-9. 确认 `.svn/wali-policy/supervision.lock` 是普通文件；若旧实验版本遗留了同名目录，先确认没有 Hook 正在运行，再由维护者显式清理，WALI 不会猜测并删除它。
+5. 在 `.claude/hooks/` 运行完整 WALI 回归测试。
+6. 在真实 SVN 工作副本根运行只读 `svn info`、`svn status` 和 `svn diff --internal-diff`。
+7. 若项目使用原生 Ignore，确认普通 `svn status` 隐藏匹配产物，而带 `--no-ignore` 和清空个人 `global-ignores` 的状态仍将其标记为 `ignored`。
+8. 确认 `.svn/wali-policy/supervision.lock` 是普通文件；若旧实验版本遗留了同名目录，先确认没有 Hook 正在运行，再由维护者显式清理，WALI 不会猜测并删除它。
 
 排查上下文加载时，可以临时配置 `InstructionsLoaded` Hook 记录实际加载原因；它只用于观察，不应成为权限判断。
 

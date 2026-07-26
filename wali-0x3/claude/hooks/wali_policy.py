@@ -1385,6 +1385,8 @@ def _wali_read_only_command(arguments: list[str], project_root: Path) -> bool:
         return False
     script = posixpath.normpath(arguments[1].replace("\\", "/"))
     permitted_scripts = {
+        ".claude/hooks/wali-doctor.py",
+        "claude/hooks/wali-doctor.py",
         ".claude/hooks/wali_policy.py",
         "claude/hooks/wali_policy.py",
         ".claude/hooks/wali_graph.py",

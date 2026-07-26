@@ -578,6 +578,7 @@ allow_svn_commit: true
             "svn info --show-item wc-root",
             "svn diff --internal-diff docs/wali-0x3/goal.md",
             "svn log -l 5",
+            "python3 .claude/hooks/wali-doctor.py --project-root .",
             "python3 .claude/hooks/wali_policy.py check",
             "python3 .claude/hooks/wali_policy.py --project-root . check",
             "python3 .claude/hooks/wali_policy.py baseline",

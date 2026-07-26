@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-26T15:46:39+08:00
+updated: 2026-07-26T16:29:19+08:00
 goal_id: G-001
 phase: clarifying
 active_task: none
@@ -9,7 +9,7 @@ stop_intent: continue
 supervision_event: none
 recovery_action: none
 recovery_evidence: ""
-state_digest: "f7ca9fa4c27ecdcc2a6303e10e780e6d0de1537c36d3cd3a8e0f4ac10920e238"
+state_digest: "1fdaa5e95e1fda746829a498dd5549cc25d71c19ac378ee64877d1a6b96bfe16"
 ---
 
 # 可恢复交接
@@ -41,6 +41,8 @@ state_digest: "f7ca9fa4c27ecdcc2a6303e10e780e6d0de1537c36d3cd3a8e0f4ac10920e238"
 
 ## 最近完成
 
+- 已将 README 从过期的 0.4 设计草稿重写为面向部署者和使用者的 0.14 现行文档，按 Goal/Spec、WALI Loop、阶段契约、Graph、Agent、SVN、部署和扩展的依赖顺序组织。
+- 已增加只读 `wali-doctor.py`，统一检查核心布局、Python、Claude Code 内置 Doctor、六类 Hook、SVN 版本与工作副本根、Goal 契约、工作图和原生 Ignore；它只调用读取命令，不创建文件或修改 SVN 属性。
 - 已建立固定 `spec.md`、Goal + Spec 联合确认和 `discovery` / `pressure_test` / `hybrid` 三种收敛入口。
 - 已补齐 Goal 退出机制，区分 handoff、blocked、completed、cancelled、superseded 与 aborted。
 - 已实现成功收尾前置校验、提交后 delivering 冻结、新 Goal 全新治理代次、全阶段 Spec 身份一致和 Requirement → AC → Task → Evidence 证据不变量。
@@ -88,6 +90,7 @@ state_digest: "f7ca9fa4c27ecdcc2a6303e10e780e6d0de1537c36d3cd3a8e0f4ac10920e238"
 
 | 时间 | 命令/方法 | 退出结果 | 摘要 | 关联 AC/任务 |
 | --- | --- | --- | --- | --- |
+| 2026-07-26T16:29:19+08:00 | `python3 -m unittest -q test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py test_wali_doctor.py`；Policy、工作图、README 链接与一致性、设置 JSON、Python 语法和差异格式检查 | 0 | 171 项回归通过；Doctor 的健康、缺失布局、严格只读命令、Policy 接入、Hook 缺失/缩窄/全覆盖/分组覆盖、SVN 根错误和 schema 失败路径有效；Standards 与 Spec 双轴复核无剩余问题 | WALI 控制面 |
 | 2026-07-26T15:46:39+08:00 | `python3 -m unittest -q test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py`；Policy、工作图、设置 JSON、Python 编译与 `git diff --check` | 0 | 162 项回归通过；可信原生 Ignore、属性链变更回退审计、本地产物分类和既有控制面行为有效 | WALI 控制面 |
 
 ## 已知问题与风险
@@ -96,7 +99,7 @@ state_digest: "f7ca9fa4c27ecdcc2a6303e10e780e6d0de1537c36d3cd3a8e0f4ac10920e238"
 - 已为静态共享参考建立 `refs/templates/` 与 `refs/compliance/` 两个集合及扩展说明，尚未预置具体模板或检查条目。它们不是 Skill：Developer 读取前者和后者，Reviewer 只读取后者；项目特殊要求仍由 `docs` 与 Spec 定义。
 - Agent Teams teammate 的 `effort` 继承 lead，不采用各自 Agent frontmatter；只需 Architect 使用 `xhigh` 时必须把它作为独立 Subagent。实际模型和 effort 还可能受命令行、环境变量或组织上限覆盖，应以运行界面显示为准。
 - 当前 Git 存档环境没有安装 SVN CLI，因此原生 Ignore 的命令组合通过替代进程结果和 XML 行为测试验证；部署时仍须按兼容清单在真实 SVN 1.9+ 工作副本核对。
-- 本存档继续把五个测试文件放在 `claude/hooks/`；它们不在 Hook 配置中，不会自动执行，但会随部署包保留。该取舍是用户明确决定，不再迁移。
+- 本存档继续把六个测试文件放在 `claude/hooks/`；它们不在 Hook 配置中，不会自动执行，但会随部署包保留。该取舍是用户明确决定，不再迁移。
 
 ## 工作图摘要
 

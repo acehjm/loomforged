@@ -71,12 +71,13 @@ Rules 保存跨项目硬约束，Refs 保存跨项目稳定、按角色和场景
 
 ## 常用命令
 
+- `python3 .claude/hooks/wali-doctor.py --project-root .`：只读检查部署环境、Hook、SVN、契约和工作图。
 - `python3 .claude/hooks/wali_policy.py check`：检查阶段契约和 schema。
 - `python3 .claude/hooks/wali_policy.py audit`：审计 SVN 差异与写入范围。
 - `python3 .claude/hooks/wali_graph.py --project-root . check`：检查工作图。
 - `python3 .claude/hooks/wali_supervision.py --project-root . status`：查看 Agent 运行与恢复状态。
 - `python3 .claude/hooks/wali_stop.py --project-root .`：检查是否可以停止。
-- `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py`：在 `.claude/hooks/` 中运行 WALI 回归测试。
+- `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py test_wali_doctor.py`：在 `.claude/hooks/` 中运行 WALI 回归测试。
 
 `/goal` 用于持续推进已有明确终点的阶段；`/loop` 只用于等待 CI、部署或评论等外部状态。
 

@@ -1030,6 +1030,7 @@ project/
 │   │   └── compliance/
 │   │       └── INDEX.md
 │   ├── hooks/
+│   │   ├── wali-doctor.py
 │   │   ├── wali_policy.py
 │   │   ├── wali_graph.py
 │   │   ├── wali_stop.py
@@ -1039,7 +1040,8 @@ project/
 │   │   ├── test_wali_graph.py
 │   │   ├── test_wali_stop.py
 │   │   ├── test_wali_supervision.py
-│   │   └── test_wali_svn.py
+│   │   ├── test_wali_svn.py
+│   │   └── test_wali_doctor.py
 │   ├── skills/
 │   │   ├── wali-start/
 │   │   ├── wali-resume/
@@ -1071,7 +1073,7 @@ CLAUDE.md
 跨项目稳定、低频变化的静态参考，包括 WALI 运行说明、Developer 使用的开发模板，以及 Developer/Reviewer 使用的企业内部代码检查基线。通过 `INDEX.md` 按角色与场景选择性读取，不保存具体项目知识或运行状态。
 
 .claude/hooks/
-阶段契约与工具副作用约束、共享 SVN 边界、基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
+只读部署诊断、阶段契约与工具副作用约束、共享 SVN 边界、基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
 
 .claude/skills/
 只在特定任务中需要的知识和多步骤流程。
@@ -1181,10 +1183,11 @@ Coordinator 识别经过验证且具有跨项目价值的结论，提交给独�
 
 ## 17. 当前实现范围
 
-0.11 版已实现：
+0.14 版已实现：
 
 ```text
 最小项目目录
+只读部署 Doctor 与真实运行前能力核对
 目标契约
 模糊需求和已有规格的多轮澄清
 开放式访谈、规格压力测试与 hybrid 收敛路径
