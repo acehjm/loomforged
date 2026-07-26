@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-26T13:41:44+08:00
+updated: 2026-07-26T15:46:39+08:00
 goal_id: G-001
 phase: clarifying
 active_task: none
@@ -9,7 +9,7 @@ stop_intent: continue
 supervision_event: none
 recovery_action: none
 recovery_evidence: ""
-state_digest: "55cf80fe73f474fe2a9bf1957cef40cc1dae6cbbd3bdb2a70fdc624820b2e72f"
+state_digest: "f7ca9fa4c27ecdcc2a6303e10e780e6d0de1537c36d3cd3a8e0f4ac10920e238"
 ---
 
 # 可恢复交接
@@ -45,7 +45,8 @@ state_digest: "55cf80fe73f474fe2a9bf1957cef40cc1dae6cbbd3bdb2a70fdc624820b2e72f"
 - 已补齐 Goal 退出机制，区分 handoff、blocked、completed、cancelled、superseded 与 aborted。
 - 已实现成功收尾前置校验、提交后 delivering 冻结、新 Goal 全新治理代次、全阶段 Spec 身份一致和 Requirement → AC → Task → Evidence 证据不变量。
 - 已将 SVN 工作副本根识别改为基于 `svn info`，普通子目录中的有副作用动作、直接读取 SVN 状态的 baseline/carry/audit、摘要和 Stop 均拒绝。
-- 已建立 Rules / Refs / Skills / Spec 分层，新增 `claude/refs/INDEX.md`，明确硬约束、详细参考、流程能力和本 Goal 选择的归属。
+- 已接入人维护的原生 `svn:ignore` / `svn:global-ignores`：状态读取清空个人客户端 `global-ignores`，只有属性链没有本地修改的项目本地产物不进入 baseline、carry、handoff 摘要、Stop 或提交差异，普通未版本化项和属性变化继续审计；WALI 不自动 `propset`。
+- 已将知识分层纠正为“跨项目参考—项目资料”：Refs 保存低频变化的 WALI 说明、共享开发模板和企业内部代码检查基线，并由 `refs/INDEX.md` 按角色与场景路由。项目特有资料仍保留在项目 `docs/`，采用结论和例外编译进 `spec.md`。
 - 已实现 Skill 的“项目内定义 → Goal 授权 → Task `所用 Skill` → 实际动作检查”链路；工作图验证未授权 Skill 并派生 Skill → Task 方法边，Reviewer 也具备受约束的 Skill 工具。
 - 已实现 Agent 监督与异常恢复协议、本地运行事件记录、异常恢复交接校验，以及 `TeammateIdle`、`TaskCompleted`、`StopFailure` 三类 Hook。
 - 已新增按需启用、默认只读且不拥有 Goal/Spec 的 Architect Agent。
@@ -54,7 +55,7 @@ state_digest: "55cf80fe73f474fe2a9bf1957cef40cc1dae6cbbd3bdb2a70fdc624820b2e72f"
 - 已将 `goal.md` 模板从 173 行压缩为 130 行，保留人类需要确认的事实、未知项、目标、范围、AC、检查方式和确认包，移除重复的转段与退出手册。
 - 已增加 `wali_schema: 1`、兼容能力清单和 fail-closed 版本检查；Policy、Stop 与监督事件都不会接受未知或缺失 schema，也不会静默迁移。
 - 已将监督并发控制改为持久文件配合操作系统建议锁；内核会在正常结束或崩溃时释放锁，诊断元数据不参与所有权判断，存活持锁者不可强占，也不再需要递归的陈旧锁回收标记。
-- 已提取共享 `wali_svn.py` 公共边界，Stop 与监督不再导入 Policy 私有 SVN 函数。按用户决定，四个测试文件继续保留在 `claude/hooks/` 原位。
+- 已提取共享 `wali_svn.py` 公共边界，Stop 与监督不再导入 Policy 私有 SVN 函数。按用户决定，五个测试文件继续保留在 `claude/hooks/` 原位。
 
 ## 当前工作
 
@@ -87,14 +88,15 @@ state_digest: "55cf80fe73f474fe2a9bf1957cef40cc1dae6cbbd3bdb2a70fdc624820b2e72f"
 
 | 时间 | 命令/方法 | 退出结果 | 摘要 | 关联 AC/任务 |
 | --- | --- | --- | --- | --- |
-| 2026-07-26T13:41:00+08:00 | `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py` | 0 | 154 项回归通过，覆盖监督 schema fail-closed、祖先 `.svn` 边界、POSIX/Windows 锁、公共 SVN 模块及既有工作图/策略/停止/监督行为 | WALI 控制面 |
+| 2026-07-26T15:46:39+08:00 | `python3 -m unittest -q test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py`；Policy、工作图、设置 JSON、Python 编译与 `git diff --check` | 0 | 162 项回归通过；可信原生 Ignore、属性链变更回退审计、本地产物分类和既有控制面行为有效 | WALI 控制面 |
 
 ## 已知问题与风险
 
 - 当前模板 Goal + Spec 尚未经具体项目用户确认，不得拆分实施任务或编码。
-- 当前只实现了通用 Skill 接入机制，没有在缺少合规标准、技术栈和项目判定规则时生成空泛的“合规审计”或“开发”Skill；具体项目应按 `refs/INDEX.md` 和 Agent 调用契约接入。
+- 已为静态共享参考建立 `refs/templates/` 与 `refs/compliance/` 两个集合及扩展说明，尚未预置具体模板或检查条目。它们不是 Skill：Developer 读取前者和后者，Reviewer 只读取后者；项目特殊要求仍由 `docs` 与 Spec 定义。
 - Agent Teams teammate 的 `effort` 继承 lead，不采用各自 Agent frontmatter；只需 Architect 使用 `xhigh` 时必须把它作为独立 Subagent。实际模型和 effort 还可能受命令行、环境变量或组织上限覆盖，应以运行界面显示为准。
-- 本存档继续把测试文件放在 `claude/hooks/`；它们不在 Hook 配置中，不会自动执行，但会随部署包保留。该取舍是用户明确决定，不再迁移。
+- 当前 Git 存档环境没有安装 SVN CLI，因此原生 Ignore 的命令组合通过替代进程结果和 XML 行为测试验证；部署时仍须按兼容清单在真实 SVN 1.9+ 工作副本核对。
+- 本存档继续把五个测试文件放在 `claude/hooks/`；它们不在 Hook 配置中，不会自动执行，但会随部署包保留。该取舍是用户明确决定，不再迁移。
 
 ## 工作图摘要
 

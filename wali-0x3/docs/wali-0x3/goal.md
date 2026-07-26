@@ -125,6 +125,6 @@ superseded_by: none
 
 ## 9. Goal + Spec 联合确认
 
-确认前汇总目标与背景、范围与非目标、约束、Requirement、行为与接口/数据/错误契约、验收判定规则、检查方式、适用 Rules/Refs、决策、风险和第一个可验证增量。
+确认前汇总目标与背景、范围与非目标、约束、Requirement、行为与接口/数据/错误契约、验收判定规则、检查方式、项目资料来源、适用的通用 Rules/Refs、决策、风险和第一个可验证增量。
 
 当前确认状态：`pending`。用户明确确认后运行 `wali_policy.py digest`，写入 `goal_definition_digest`、`goal_confirmation: confirmed` 和可追溯的 `goal_confirmation_evidence`。Goal 或 Spec 的稳定定义变化后必须撤销确认并返回 `clarifying`；沉默和 Agent 自行概括不算确认。

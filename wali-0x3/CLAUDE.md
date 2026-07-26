@@ -16,7 +16,7 @@ WALI（Work · Assign · Loop · Inspect）用于让 Claude Code 开发工作可
 
 `goal.md` 必须声明当前支持的 `wali_schema: 1`。默认不创建其他上下文、计划、进度、记忆或图副本；额外产物必须已被确认的 Goal 纳入范围并由当前阶段授权。
 
-Rules 保存硬约束，Refs 保存按需查阅的详细资料，Skills 保存可重复流程。它们都不自动改变 Goal、phase、effect 或写入范围。
+Rules 保存跨项目硬约束，Refs 保存跨项目稳定、按角色和场景读取的 WALI 说明、开发模板与代码检查基线，Skills 保存可重复流程。具体项目的需求、接口、模块和特殊约束保留在项目 `docs/`，其可执行结论编译进 `spec.md`。这些层都不自动改变 Goal、phase、effect 或写入范围。
 
 ## 启动与恢复
 
@@ -38,6 +38,7 @@ Rules 保存硬约束，Refs 保存按需查阅的详细资料，Skills 保存�
 - 主追踪链为 Requirement → AC → Task → Evidence。Task 和 Issue 必须按状态机闭环，完成任务必须有执行证据和独立验证者。
 - 一个 Agent 同时只拥有一个主要任务；并行写入必须使用范围互斥的独立 SVN 工作副本。
 - Agent 运行状态不等于 WALI Task 状态。失败后先冻结任务和路径、审计已有差异并优先恢复原 Agent，不自动清理、覆盖、提交或生成替代实现。
+- 项目级 Ignore 由人维护的版本化 `svn:ignore` / `svn:global-ignores` 属性定义。WALI 清空个人客户端 `global-ignores` 后读取完整状态，只把属性链没有本地修改的原生 `ignored` 本地产物排除在交付差异外；它不自动执行 `propset`。
 - 实现转入检查前必须运行 `carry`；修复后建立新代，不覆盖旧代证据。
 - 不删除、跳过或弱化测试，不伪造证据，不声称未经验证的完成。
 - SVN 提交只在 `delivering`、用户已验收且逐个精确 leaf path 当场授权时允许；提交授权不包含 update、冲突解决、部署或其他外部写入。
@@ -58,7 +59,7 @@ Rules 保存硬约束，Refs 保存按需查阅的详细资料，Skills 保存�
 | `closed` | 无需提交的成功终态 | 仅受控 handoff/新 Goal |
 | `terminated` | 取消、替代或安全中止 | 仅受控 handoff/新 Goal |
 
-详细转段、异常恢复、SVN 交付和命令说明按需读取 `.claude/refs/operations.md`；运行能力与降级要求见 `.claude/refs/compatibility.md`。Policy Hook 是权限判定权威，Ref 只解释操作方式。
+详细转段、异常恢复、SVN 交付和命令说明按需读取 `.claude/refs/operations.md`；运行能力与降级要求见 `.claude/refs/compatibility.md`。Policy Hook 是权限判定权威，这两份 Ref 只解释操作方式。
 
 ## 执行方式与角色
 
@@ -66,7 +67,7 @@ Rules 保存硬约束，Refs 保存按需查阅的详细资料，Skills 保存�
 
 主会话承担 Coordinator。`architect` 是按需只读顾问；`developer` 只在 implementing 中实现；`reviewer` 和 `tester` 只在 inspecting 中独立验证。身份、模型、effort、工具和停止条件以 `.claude/agents/` 中各角色定义为准，不能由调用者临时扩大。
 
-工程与测试的路径规则位于 `.claude/rules/engineering.md` 和 `.claude/rules/testing.md`。具体 Goal 只读取 Spec/Task 关联的 Refs；控制面变更必须作为独立任务审查。
+工程与测试的路径规则位于 `.claude/rules/engineering.md` 和 `.claude/rules/testing.md`。Agent 通过 `.claude/refs/INDEX.md` 按角色与任务场景选择 Ref，并读取 Spec 引用的项目资料；新增同类 Ref 只维护索引，不逐个改写 Agent 身份。
 
 ## 常用命令
 
@@ -75,7 +76,7 @@ Rules 保存硬约束，Refs 保存按需查阅的详细资料，Skills 保存�
 - `python3 .claude/hooks/wali_graph.py --project-root . check`：检查工作图。
 - `python3 .claude/hooks/wali_supervision.py --project-root . status`：查看 Agent 运行与恢复状态。
 - `python3 .claude/hooks/wali_stop.py --project-root .`：检查是否可以停止。
-- `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py`：在 `.claude/hooks/` 中运行 WALI 回归测试。
+- `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py`：在 `.claude/hooks/` 中运行 WALI 回归测试。
 
 `/goal` 用于持续推进已有明确终点的阶段；`/loop` 只用于等待 CI、部署或评论等外部状态。
 

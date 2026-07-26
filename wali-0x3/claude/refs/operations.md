@@ -17,7 +17,7 @@ owner: WALI 控制面维护者
 
 ## 1. Goal 与 Spec 收敛
 
-模糊或缺失需求由 `/wali-start` 进行开放式访谈；已有接口文档、需求或规格时进行缺失、歧义、冲突、代码一致性和可测试性压力测试。必要时两者混合。所有路径都必须形成固定的 `spec.md`，并与 Goal 一次联合确认。
+模糊或缺失需求由 `/wali-start` 进行开放式访谈；已有接口文档、需求或规格时进行缺失、歧义、冲突、代码一致性和可测试性压力测试。用户资料保留在具体项目的 `docs/`，其路径、版本、适用范围和采用结论写入固定的 `spec.md`；不得复制到 `.claude/refs/`。必要时两种收敛方式混合，最后与 Goal 一次联合确认。
 
 确认包至少包含目标、背景、范围、非范围、约束、Requirement、行为与接口/数据/错误契约、验收判定规则、检查方式、决策、风险和第一个可验证增量。沉默和 Agent 自行概括不是确认。Spec 或 Goal 稳定定义变化后，清空确认与 `goal_definition_digest`，返回 `clarifying`。
 
@@ -68,7 +68,13 @@ Agent 运行状态和 WALI Task 状态是两套状态机。`TaskCompleted` 与 `
 
 ## 5. SVN 工作副本与交付
 
-所有有副作用动作从 `svn info --show-item wc-root` 发现真实工作副本根。普通子目录、无法验证的元数据或无法保存动作快照会被拒绝。
+WALI 要求 SVN 1.9+，所有有副作用动作从 `svn info --show-item wc-root` 发现真实工作副本根。普通子目录、无法验证的元数据或无法保存动作快照会被拒绝。
+
+项目维护者可以提交目录上的 `svn:ignore`，或在 SVN 1.8+ 的工作副本根提交 `svn:global-ignores`。WALI 不推断规则、不创建 `.svnignore`，也不自动执行 `propedit`、`propset` 或 `propdel`。
+
+读取状态时，WALI 用 `--config-option config:miscellany:global-ignores=` 排除个人客户端配置，再用 `--no-ignore` 保留完整诊断视图。只有项目 SVN 属性产生、状态为 `ignored`，且自身与祖先属性没有本地修改的未版本化项归入本地产物；它们不进入 baseline、carry、handoff 摘要、Stop 阻断或提交差异。
+
+普通 `unversioned` 项、已版本化变化、冲突、externals 和属性变化继续接受完整审计。Ignore 属性本身的修改也是版本化差异，不会因它同时改变文件分类而消失。
 
 `implementing` 只允许在活动任务精确 leaf path 上使用受控的：
 
@@ -107,5 +113,5 @@ svn commit (-m|--message) <literal> -- <exact-leaf-path>...
 在 `.claude/hooks/` 中运行完整控制面测试：
 
 ```text
-python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py
+python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py test_wali_svn.py
 ```

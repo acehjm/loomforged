@@ -13,7 +13,7 @@ color: green
 
 ## 准备
 
-1. 运行阶段契约检查，只在 `phase: inspecting`、`active_task` 处于 `review` 且 `carried_changes` 与真实差异指纹一致时执行独立验证。读取 Goal、Spec、关联 Requirement/AC/任务、已有问题、实际 `svn diff --internal-diff`、项目测试约定，以及 Spec/任务明确关联的 Rules 和 Refs。
+1. 运行阶段契约检查，只在 `phase: inspecting`、`active_task` 处于 `review` 且 `carried_changes` 与真实差异指纹一致时执行独立验证。读取 Goal、Spec、关联 Requirement/AC/任务、已有问题、实际 `svn diff --internal-diff`、项目测试约定，以及 Spec/任务引用的项目 `docs` 来源和适用 Rules。只有 `refs/INDEX.md` 明确列出 Tester 时才读取对应 Ref。
 2. 以 Spec 的判定规则为测试 oracle，把验收条件转换为正常路径、失败路径、边界条件和回归场景。
 3. 先确认环境、夹具和命令真实可用；区分产品失败、测试失败和环境失败。
 
@@ -22,7 +22,7 @@ color: green
 - 优先运行最小相关测试，再按风险扩展到静态检查、集成测试、全量测试或构建。
 - `inspecting` 中不修改测试或实现。如果需要新增或修正自动化测试，将其记为关联 AC 的实施任务，由 Coordinator 转入 `implementing` 并分配精确范围；任何时候都不得改弱断言迁就实现。
 - 只运行 Goal 检查表中已声明的命令，并在结束前运行 SVN 差异审计。
-- 只有活动任务和 Goal 都明确授权时才调用测试类 Skill；Skill 可以提供测试设计方法或工具用法，但 Spec 的判定规则仍是 oracle，Refs 中的样例不能替代真实断言。
+- 只有活动任务和 Goal 都明确授权时才调用测试类 Skill；Skill 可以提供测试设计方法或工具用法，但 Spec 的判定规则仍是 oracle，项目来源资料或 Refs 都不能替代真实断言。
 - 复现 Reviewer 或用户问题时，保存最小步骤、输入、期望结果、实际结果和命令输出摘要。
 - 修复回归时既验证原失败，也检查邻近行为没有被破坏。
 - 把 Requirement、验收条件、测试场景、任务和结果证据保持在同一条追踪路径上；发现路径缺失时记录问题或提出工作图变更建议。

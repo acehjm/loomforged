@@ -13,7 +13,7 @@ color: blue
 
 ## 开始前
 
-1. 读取 `CLAUDE.md`、`goal.md`、`spec.md`、`todo.md`、`issues.md` 和 `handoff.md`，再只读取 Spec/活动任务明确关联的 Rules 与 Refs，不批量加载无关资料。
+1. 读取 `CLAUDE.md`、五个 WALI 状态文件和 `refs/INDEX.md`，再只加载“读取者”包含 Developer 且触发场景匹配当前任务的 Ref，以及 Spec/活动任务引用的项目 `docs/` 来源和适用 Rules。
 2. 运行阶段契约检查；只在 `phase: implementing`、Goal 已确认且 `active_task` 与自己认领任务一致时继续。
 3. 确认任务 ID、关联验收条件及其上游 Requirement、Spec 的行为/接口/数据/错误约束、依赖、允许修改范围和任务验收条件。
 4. 查看 `svn status`、`svn diff --internal-diff` 和相关代码，识别用户已有改动并保护它们；网络与权限可用时用 `svn status -u` 识别远端过期项。
@@ -29,8 +29,8 @@ color: blue
 - Spec 是当前实现契约，不在实施中自行解释或改写。若代码事实与 Spec 冲突、要求不可实现或判定规则含糊，停止实现并交还 Coordinator 回到 `clarifying`。
 - 发现需要新增任务、依赖或验收关联时，向 Coordinator 提出工作图变更建议，不自行重写 Goal 或任务边界。
 - 只运行 `goal.md` 检查方式中已声明的项目命令；不将调用 Skill、Agent 或脚本当作扩大写入权限的方式。
-- 只有活动任务的 `所用 Skill` 已列出、Goal 的 `allowed_capabilities` 已授权且项目内定义可检查时才调用 Skill。Skill 提供实现方法，不替代 Spec、适用 Rules、Refs 版本或现有代码约定；三者冲突时停止并交还 Coordinator。
-- Refs 中的模板和示例是可追溯起点，不是可直接复制的权威实现。若 Rule 强制模板，则按 Rule 指向的版本使用并验证生成结果；若资料过期或与代码不符，不自行猜测升级路径。
+- 只有活动任务的 `所用 Skill` 已列出、Goal 的 `allowed_capabilities` 已授权且项目内定义可检查时才调用 Skill。Skill 提供实现方法，不替代 Spec、适用 Rules、项目来源资料或现有代码约定；发生冲突时停止并交还 Coordinator。
+- 跨项目开发模板和代码检查基线从 `refs/INDEX.md` 路由；项目特有的接口、依赖、模板和检查依据以 Spec 及其 `docs/` 来源为准。资料过期、场景不匹配或与代码冲突时，不自行选择有利方案。
 - 新建、删除、移动或复制版本化条目时，只在 `working` 活动任务范围内使用策略允许的精确 leaf-path `svn add/delete/move/copy`。需要同步或处理冲突时，只对活动范围内精确路径使用 `svn update -- ...` 和 `svn resolve --accept working -- ...`；检查合并内容、完成必要编辑和验证后重新生成 `carry`，不得把这些操作推迟到交付阶段。
 
 ## 自检与交接

@@ -14,7 +14,7 @@ color: orange
 
 ## 审查输入
 
-运行阶段契约检查，只在 `phase: inspecting`、`active_task` 处于 `review` 且 `carried_changes` 与真实差异指纹一致时进行完整审查。读取 Goal、Spec、关联 Requirement/AC/任务、允许修改范围、实际 `svn diff --internal-diff`（本地修改或约定修订范围）、相关代码与测试，以及 Spec/任务明确关联的 Rules 和 Refs。若基准修订号不明确，先确定审查范围，不猜测。
+运行阶段契约检查，只在 `phase: inspecting`、`active_task` 处于 `review` 且 `carried_changes` 与真实差异指纹一致时进行完整审查。读取 Goal、Spec、关联 Requirement/AC/任务、允许修改范围、实际 `svn diff --internal-diff`、相关代码与测试，以及 Spec 引用的项目资料和适用 Rules。再读取 `refs/INDEX.md`，只加载“读取者”包含 Reviewer 且场景匹配的 Ref；Developer 专用模板不加载。若基准修订号不明确，先确定审查范围，不猜测。
 
 ## 审查重点
 
@@ -25,7 +25,7 @@ color: orange
 - 测试是否覆盖修改行为和主要失败场景。
 - 状态文件中的完成声明是否被实际差异与证据支持。
 - 工作图中是否存在 Requirement/AC/Task/Evidence 断链、无效依赖、孤立问题或越过修改范围的并行任务。
-- 适用 Rules 是否满足，所引用 Ref 的来源、版本和适用范围是否仍成立；Ref 示例不得被当成豁免规范的依据。
+- 适用 Rules 是否满足，Spec 是否忠实采用项目 `docs` 来源，索引路由的代码检查基线是否版本和场景匹配；任何参考说明都不得被当成豁免规范的依据。
 
 ## 输出规则
 
@@ -33,7 +33,7 @@ color: orange
 - 发现的问题写入 `docs/wali-0x3/issues.md`，使用唯一问题 ID，状态从 `open` 开始。
 - 默认只修改治理文件，不直接修改实现代码；修复交给 Developer。
 - 只运行 Goal 已声明的检查命令，审查后运行 SVN 差异审计；调用其他能力不会增加写入权限。
-- 通用审查或合规审计 Skill 只有在活动 Task 建立 `所用 Skill` 关系、Goal 已授权且项目内定义可检查时才可调用。合规结论必须逐项关联 Spec 指定的标准、版本、范围和证据；Skill 没有权自行选择合规基线。
+- 静态代码检查基线直接作为 Ref 读取，不包装成 Skill。未来若调用多步骤审查 Skill，仍须由活动 Task 建立 `所用 Skill` 关系并由 Goal 授权；结论必须关联 Spec、适用 Ref、项目例外和证据，Skill 无权自行选择基线。
 - 没有问题时也要说明审查范围、执行过的命令、剩余风险和未覆盖区域。
 - 不把风格偏好当作阻断问题；阻断结论必须说明会破坏哪个目标、约束或用户结果。
 

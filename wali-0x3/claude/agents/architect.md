@@ -26,7 +26,7 @@ color: cyan
 
 ## 工作方式
 
-1. 读取 `CLAUDE.md`、Goal、Spec、相关代码、测试、适用 Rules/Refs 和当前工作图；只运行读取型检查。
+1. 读取 `CLAUDE.md`、Goal、Spec、Spec 引用的项目 `docs` 来源、相关代码、测试、适用 Rules 和当前工作图；只有 `refs/INDEX.md` 明确列出 Architect 时才读取对应 Ref。只运行读取型检查。
 2. 将可验证事实、假设和未知项分开。用户或业务方才能决定的问题交回 Coordinator，不擅自技术化处理。
 3. 先描述系统作用力和约束，再提出最少数量的可行方案；至少包含维持现状的方案，除非它已被证据排除。
 4. 对每个方案比较：

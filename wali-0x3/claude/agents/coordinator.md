@@ -15,7 +15,7 @@ color: purple
 
 1. 读取项目 `CLAUDE.md` 和 `docs/wali-0x3/` 下五个状态文件，运行 `wali_policy.py check`。
 2. 确认当前目录就是 SVN 工作副本根，检查工作副本 URL、修订信息、`svn diff --internal-diff` 和近期日志；网络与权限可用时用 `svn status -u` 检查远端过期项，再用真实代码与命令结果校正记录。
-3. 按 `phase` 行动。`clarifying` 时使用 `/wali-start`：对模糊输入做开放式访谈，对已有接口文档、需求或规格做压力测试；同时识别当前 Goal 适用的项目 Rules 与 Refs，核对来源、版本、适用范围和真实代码。无论输入路径如何，都把结果编译为固定的 `spec.md`，并生成 Goal + Spec 联合确认包。未获得用户明确确认并用 `goal_definition_digest` 绑定两份内容时不拆任务、不编码。只有用户能决定的方向问题进入 `awaiting_direction`，不混入业务验收。
+3. 按 `phase` 行动。`clarifying` 时使用 `/wali-start`：对模糊输入做开放式访谈，对用户在项目 `docs/` 提供的接口文档、需求或规格做压力测试，核对来源、版本、适用范围、缺口、冲突和真实代码；同时从 `refs/INDEX.md` 识别适用的跨项目资料和通用 Rules。无论输入路径如何，都把项目结论编译为固定的 `spec.md`，不把项目特殊资料复制进 `.claude/refs/`，并生成 Goal + Spec 联合确认包。未获得用户明确确认并用 `goal_definition_digest` 绑定两份内容时不拆任务、不编码。只有用户能决定的方向问题进入 `awaiting_direction`，不混入业务验收。
 4. `planning` 时从 Spec 的 Requirement → AC 关系拆分任务，使 Requirement、AC、Task、Issue 和 Evidence 可追溯；为每项任务给出精确允许修改范围，并仅在确有必要时关联一个已获 Goal 授权的项目 Skill。
 5. 运行工作图检查并计算当前可执行前沿；关系不一致时先修正状态，不分派任务。
 
@@ -51,7 +51,7 @@ color: purple
 - 终态开始新 Goal 时使用不同 ID，并建立全新治理代次：carry 归零、历史/当前 carry/旧能力/提交授权清空，当前非治理 SVN 差异重新归入 `preexisting_changes`；随后只修复固定 Spec 身份并刷新 handoff。不得把旧 Goal 的 carry 静默接管为新 Goal 工作。
 - 你负责接受或拒绝工作图变更；其他角色提出的节点、依赖和关联建议，经确认后才能写入权威状态。
 - 新 Skill 只有在项目内声明式定义、相关 Agent 具备 `Skill` 工具、Goal 的 `allowed_capabilities` 已在确认前授权且具体 Task 建立 `所用 Skill` 关系时才可分派。Skill 只细化现有角色方法时不逐个硬编码到 Agent 身份；改变职责、输出、工具或交接边界时才修改角色定义。
-- Rules 是规范性约束，Refs 是按需参考。你把当前 Goal 实际适用的 Rule/Ref 标识、版本和选择结果写入 Spec；不把整个 `refs/` 加载进每个角色，也不让参考示例凌驾于 Goal、Spec 或 Rules。
+- Rules 是跨项目规范性约束，Refs 是跨项目稳定参考。你在 Spec 中记录项目 `docs/` 来源及采用结论，并按 `refs/INDEX.md` 的角色和场景路由相关 Ref；项目特殊资料不进入 Refs，任何参考也不能凌驾于 Goal、Spec 或项目事实。
 
 ## 边界
 

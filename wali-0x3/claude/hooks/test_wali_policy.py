@@ -2351,6 +2351,96 @@ stop_intent: continue
         self.assertIn("context.md", result.stdout)
         self.assertIn("新产物", result.stdout)
 
+    def test_audit_excludes_native_ignored_local_artifacts(self) -> None:
+        status_xml = self.root / "status.xml"
+        status_xml.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<status><target path=".">
+  <entry path="target"><wc-status item="ignored" props="none"/></entry>
+  <entry path="context.md"><wc-status item="unversioned" props="none"/></entry>
+</target></status>
+""",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "--project-root",
+                str(self.root),
+                "audit",
+                "--status-xml",
+                str(status_xml),
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("target", result.stdout)
+        self.assertIn("context.md", result.stdout)
+
+    def test_modified_native_ignore_property_remains_auditable(self) -> None:
+        status_xml = self.root / "status.xml"
+        status_xml.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<status><target path=".">
+  <entry path="target"><wc-status item="ignored" props="none"/></entry>
+  <entry path="."><wc-status item="normal" props="modified"/></entry>
+</target></status>
+""",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "--project-root",
+                str(self.root),
+                "audit",
+                "--status-xml",
+                str(status_xml),
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("properties-modified", result.stdout)
+        self.assertIn("target", result.stdout)
+
+    def test_handoff_digest_excludes_native_ignored_local_artifact_contents(
+        self,
+    ) -> None:
+        target = self.root / "target"
+        target.mkdir()
+        artifact = target / "cache.bin"
+        artifact.write_bytes(b"first")
+        status_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<status><target path=".">
+  <entry path="target"><wc-status item="ignored" props="none"/></entry>
+</target></status>
+"""
+        contract = wali_policy.load_contract(self.root)
+
+        first = wali_policy.handoff_state_digest(
+            self.root,
+            contract,
+            status_xml,
+        )
+        artifact.write_bytes(b"second")
+        second = wali_policy.handoff_state_digest(
+            self.root,
+            contract,
+            status_xml,
+        )
+
+        self.assertEqual(first, second)
+
     def test_audit_allows_implementing_changes_inside_active_task_scope(self) -> None:
         self.write_implementing_contract()
         status_xml = self.root / "status.xml"

@@ -2,7 +2,7 @@
 name: wali-0x3-core-design
 title: wali-0x3 核心设计
 status: implemented
-version: 0.12
+version: 0.14
 date: 2026-07-26
 ---
 
@@ -217,32 +217,45 @@ Skill、Agent、脚本和工具是能力来源，不是写入授权来源。Coor
 
 为避免将工作副本中原本就存在的用户修改误判为 Agent 越界，新 Goal 开始时由 `wali_policy.py baseline` 为当前 SVN 变更生成路径、内容与 SVN 属性指纹。差异审计只在指纹保持不变时忽略该既有变更；一旦其内容或属性在基线后改变，仍按越界处理。用户确认后的 `goal_definition_digest` 同时绑定这份基线与能力清单，不能在不重新确认 Goal 的情况下事后改写。
 
+项目级本地产物由人维护的版本化 `svn:ignore` 或 `svn:global-ignores` 属性声明。`wali_svn.py` 清空个人客户端的 `global-ignores` 后运行 `svn status --xml --no-ignore`，把项目属性命中且属性链没有本地修改的 `ignored` 项与需审计变化分开。
+
+这些本地产物不进入 baseline、carry、handoff 摘要、Stop 阻断或提交清单，但仍保留在原始状态中供诊断。普通未版本化文件、属性变化、冲突和 externals 继续审计；WALI 不推断规则、不创建 `.svnignore`，也不自动写入 SVN 属性。
+
 WALI 的治理状态默认只允许落入固定的 `goal.md`、`spec.md`、`todo.md`、`issues.md` 和 `handoff.md`。`spec.md` 是每个开发 Goal 的必备规范契约，不是外部 Skill 可自由命名生成的附属文件。额外的上下文、计划、进度、图副本或发布产物，只有在目标契约列入范围或用户明确授权时才能创建。
 
 这个约束同时位于项目规则、Agent 身份和工具 Hook 层。Skill 或 Agent 在加载前先经过通用能力预检，其后的每个实际工具动作继续通过同一阶段契约。因此，即使某个环境没有特定 Skill，或未来换成名称不同但行为相似的能力，约束仍然成立，也不会因未知流程默认生成 `context.md` 等文件。
 
-### 5.2 项目知识与角色能力分层
+### 5.2 跨项目参考与项目资料分层
 
-特定项目通常还会提供模板方法、框架约定、接口资料和依赖限制。它们不能全部塞进 Agent 身份，也不能混成一份会自动膨胀的上下文。WALI 按“是否具有规范性”和“何时需要加载”分层：
+WALI 会被用于许多快速迭代且彼此不同的项目。用户为单个项目提供的需求、规格、接口协议、模块边界、模板、依赖和代码检查要求应保留在该项目的 `docs/`，再把可执行结论编译进固定的 `spec.md`。
+
+真正跨项目稳定的 WALI 说明、开发模板和企业内部代码检查基线可以进入 `refs/`。它们由 `refs/INDEX.md` 按读取角色与触发场景路由，不要求每个项目重复维护，也不把项目特例提升成共享惯例。
 
 ```text
-所有会话都必须知道的稳定事实
+跨项目且所有会话都必须知道的稳定事实
 → CLAUDE.md
 
-违反就应阻止交付的硬约束
+跨项目且违反就应阻止交付的硬约束
 → rules/
 
-模板正文、详细 API、兼容矩阵、示例和设计理由
+跨项目稳定、按角色与场景查阅的说明、模板和检查基线
 → refs/
 
-可重复的多步骤方法
+跨项目可重复的多步骤方法
 → skills/
 
-当前 Goal 实际选用的规则、资料、版本和例外
+本项目用户资料的来源与当前 Goal 的规范化结论
+→ 项目 docs/ + spec.md
+
+当前 Goal 实际适用的通用规则、参考和例外
 → spec.md
 ```
 
-Rule 应短、可判定并尽量通过 `paths` 限定适用范围。硬性依赖版本、禁用库、安全/合规要求、必须使用某模板等写入 Rule；大段模板、依赖兼容矩阵、供应商接口说明和正反例放入 Ref，由 Rule 或 Spec 以稳定标识和版本引用。一次性选择只写入 Spec，不升级为全局规则。Ref 不是权威状态，也不会自动扩大上下文；Agent 只读取当前 Spec/Task 关联的部分。
+Rule 应短、可判定并尽量通过 `paths` 限定适用范围。Ref 是可直接读取的静态参考，不是 Skill，也不自动产生权限或约束。跨项目通用的开发模板与代码检查基线可以作为 Ref；项目特有的强制模板、依赖版本、供应商接口、模块设计和检查要求仍由用户资料与 Spec 定义。
+
+`refs/INDEX.md` 是共享参考的总路由。Agent 根据读取角色和触发场景选择 Ref；新增同类 Ref 通常只增加文件并维护相应索引，不需要逐个改写 Agent，也不建立 Skill → Task 方法边。
+
+Coordinator 记录项目资料的相对路径、版本或日期、适用范围和采用结论。普通项目迭代不修改 Agents、Rules、Refs 或 Skills；只有 WALI 行为、Claude Code 能力或跨项目惯例稳定变化时，才把共享资料修改作为独立任务审查。
 
 角色扩展同样使用分层接入。把一个 `SKILL.md` 放进目录只是“能力存在”，还不是“能力可用”。完整链路是：
 
@@ -254,7 +267,9 @@ Rule 应短、可判定并尽量通过 `paths` 限定适用范围。硬性依赖
 → 每个实际动作继续接受 phase/effect/scope/SVN 检查
 ```
 
-如果 Skill 只是细化角色已有方法，例如某语言开发方法或通用代码审查，Agent 身份保留通用调用契约即可，不必硬编码每个 Skill 名称。只有新 Skill 改变角色职责、工具、输出或交接协议时才改 Agent 定义。合规审计不能只靠一个名为“compliance”的 Skill：Spec 还必须明确标准、版本、适用范围和判定规则，Skill 只执行该基线。普通开发 Goal 不得修改 Agents、Rules、Refs 或 Skills；这些都属于项目控制面，需要独立审查和重新确认受影响 Goal。
+如果 Skill 只是细化角色已有方法，例如某语言开发方法或通用代码审查，Agent 身份保留通用调用契约即可，不必硬编码每个 Skill 名称。只有新 Skill 改变角色职责、工具、输出或交接协议时才改 Agent 定义。
+
+代码合规基线本身属于 Ref，不需要包装成 Skill。只有形成可重复的多步骤检查方法时才考虑 Skill；即便如此，Spec 仍须明确项目适用的标准、版本、范围和例外，Skill 只执行已确定的基线。
 
 ## 6. 目标契约
 
@@ -352,7 +367,11 @@ frontmatter 还必须声明 `wali_schema: 1`。Policy 对缺失或未知版本 f
 
 实现差异采用代次模型：`carry_epoch` 从 0 开始，每次实现或修复准备进入检查时恰好递增 1；上一代 `carried_changes` 以“代次 + 路径 + 指纹”只追加到 `carried_history`，当前实时差异成为新一代 `carried_changes`。因此检查发现问题后可以合法回到 `implementing` 修改同一路径并再次冻结，同时任何 Agent 都不能覆盖旧指纹来抹掉审计轨迹。未变化、但来自其他已完成任务的当前代路径可以原样继承；发生变化或新增的路径仍必须属于当前活动任务。
 
-`settings.json` 的 `disableSkillShellExecution` 关闭 Skill 加载期 shell。PreToolUse Hook 在动作前检查能力定义、工具、effect、路径和开关，并在 SVN 本地元数据 `.svn/wali-policy/` 暂存五个治理文件的动作前指纹；PostToolUse 在可能发生写入后对照并删除快照，再复查契约与 SVN 差异，用于发现正常工具和可信项目命令的意外越界。该快照目录不进入 SVN。所有有副作用动作、handoff 摘要与 Stop 都通过 `svn info --show-item wc-root` 发现工作副本边界，因此 SVN 1.7+ 普通子目录不会因本地没有 `.svn` 而绕过检查。Stop Hook 在会话尝试停止前再次检查阶段、工作图、交接摘要或完成证据；`delivering` 还必须具备成功提交回执。无效契约只开放前瞻、收窄的恢复通道：重建完整 `clarifying` Goal，或在终态换新 Goal 后只修复固定 Spec 的 Goal/Spec 身份绑定。
+`settings.json` 的 `disableSkillShellExecution` 关闭 Skill 加载期 shell。PreToolUse Hook 在动作前检查能力定义、工具、effect、路径和开关，并在 SVN 本地元数据 `.svn/wali-policy/` 暂存五个治理文件的动作前指纹；PostToolUse 在可能发生写入后对照并删除快照，再复查契约与 SVN 差异，用于发现正常工具和可信项目命令的意外越界。该快照目录不进入 SVN。
+
+WALI 要求 SVN 1.9+。所有有副作用动作、handoff 摘要与 Stop 都通过 `svn info --show-item wc-root` 发现工作副本边界，因此普通子目录不会因本地没有 `.svn` 而绕过检查。Stop Hook 在会话尝试停止前再次检查阶段、工作图、交接摘要或完成证据；`delivering` 还必须具备成功提交回执。
+
+无效契约只开放前瞻、收窄的恢复通道：重建完整 `clarifying` Goal，或在终态换新 Goal 后只修复固定 Spec 的 Goal/Spec 身份绑定。
 
 这套机制的威胁模型必须说清楚：WALI 是授权与审计层，不是 OS 级安全沙箱。Hook、SVN 客户端与服务端、用户，以及 Goal 明确批准的项目命令及其全部传递代码组成可信计算基础。同一系统用户下的对抗性子进程可以理论上同时伪造本地快照和回执，所以这两者只作为一致性证据，不能宣称为跨权限防篡改边界。项目命令或依赖不可信时，不得在本地执行；应由用户在隔离环境或 CI 中运行并把结果作为外部证据带回。`delivering` 不允许执行任何项目命令，只保留只读复核、治理状态更新和经过逐次用户确认的精确 SVN 提交。
 
@@ -536,7 +555,7 @@ WALI 的 Loop 是方法和治理概念，不等同于 Claude Code 的 `/loop` �
 
 ```text
 Coordinator
-负责目标澄清、适用 Rule/Ref 与能力选择、执行方式选择、任务拆解、调度、状态协调和完成判断。
+负责目标澄清、项目资料核对、通用 Rule/Ref 与能力选择、执行方式选择、任务拆解、调度、状态协调和完成判断。
 
 Architect（可选）
 负责高影响技术决策的只读分析、方案比较、边界识别和验证建议。
@@ -560,7 +579,7 @@ Coordinator 首先负责选择执行方式，然后才是拆解任务。它不�
 主要职责：
 
 - 建立和维护目标契约。
-- 识别适用 Rules/Refs，把版本和选择结果纳入 Spec。
+- 核对项目 `docs` 来源，识别适用的通用 Rules/Refs，把路径、版本和采用结论纳入 Spec。
 - 判断主会话、Subagent、Agent Teams 或顺序执行。
 - 拆解任务、关联必要 Skill 并管理依赖。
 - 控制修改冲突和任务所有权。
@@ -588,7 +607,7 @@ Architect 不直接修改 Goal、Spec、实现或测试，不创建 ADR、设计
 
 Developer 对具体实现增量负责：
 
-- 读取目标、任务、适用 Rules 和任务关联 Refs。
+- 读取目标、任务、Spec 引用的项目资料，以及 `refs/INDEX.md` 为 Developer 路由的通用 Rules/Refs。
 - 认领一个明确任务。
 - 分析影响范围并实施修改。
 - 运行必要自检。
@@ -608,7 +627,7 @@ Reviewer 尽量使用独立上下文，避免沿用实现者的假设。
 - 是否存在边界、并发、安全和兼容性问题。
 - 是否通过删除测试、弱化校验等方式获得表面成功。
 - 是否遗漏必要测试和错误处理。
-- 是否满足适用 Rule，引用的 Ref 是否版本匹配且仍适用于真实代码。
+- 是否满足适用的通用 Rule，项目来源资料是否被 Spec 正确采用，并按 `refs/INDEX.md` 使用 Reviewer 适用的代码检查基线。
 
 发现问题时写入 `issues.md`，默认不直接修改 Developer 的代码。
 
@@ -841,6 +860,7 @@ Inspect 采用三层验证。
 - `wali_policy.py post-hook`：PostToolUse 在 Bash 或文件工具执行后复查契约和 SVN 差异，使黑盒能力生成的未授权产物可立即暴露。
 - `wali_supervision.py hook`：`TaskCompleted` 与 `TeammateIdle` 检查 Agent 运行事件是否与活动 WALI Task、工作图和证据一致；`StopFailure` 只记录失败和恢复要求。
 - `wali_stop.py`：Stop Hook 在会话尝试停止时复查阶段契约、SVN 差异、工作图、独立验证和完成证据。
+- `wali_svn.py`：集中验证工作副本根、读取不受个人 Ignore 配置影响的完整状态，并分类需审计变化与项目声明的本地产物。
 
 ### 12.2 语义检查
 
@@ -975,6 +995,8 @@ Coordinator 通过 Agent 面板或 `/tasks`、`wali_supervision.py status`、tra
 
 受控 `svn add/delete/move/copy`、`svn update -- <exact-path>...` 和 `svn resolve --accept working -- <exact-path>...` 只在 `implementing` 中对状态为 `working` 的活动任务开放，目标必须是任务范围内的精确 leaf path。若交付前出现过期或冲突，必须回到合法活动任务，精确同步、显式编辑解决、重新验证并 `carry`。
 
+项目可由人提交 `svn:ignore`，或在 SVN 1.8+ 的工作副本根提交 `svn:global-ignores`。WALI 只读消费原生结果，不开放自动 `propset`；个人客户端 Ignore 不参与项目判定。属性本身发生变化时仍作为版本化差异审计。
+
 SVN 提交授权不包含 update、冲突解决、externals、部署或发布。只允许 `svn commit (-m|--message) <literal> -- <exact-leaf-path>...`，`allow_external_writes` 在 `delivering` 仍为 false，且此阶段不允许执行项目命令。提交前必须用 `svn info --show-item wc-root` 证明项目目录就是可写工作副本根，并成功保存动作前快照；普通子目录或快照失败都会在命令执行前拒绝。`svn_commit_evidence` 仅保存可追溯的历史依据，不是 Agent 可自行签发的授权令牌；每次匹配的提交仍由 PreToolUse 返回 `ask`，用户必须当场核对命令和精确路径。PreToolUse 同时要求全部目标在提交前确有差异、指纹等于当前 carry 代且 SVN 元数据证明其为 leaf file，并把逐路径证据写入动作快照。PostToolUse 只接受成功工具响应中的唯一提交修订号，并要求提交后授权路径清洁、所有现存目标的 `last-changed-revision` 都等于该修订号；随后写入绑定 Goal、carry 代次、授权、提交前证据、提交后指纹和统一修订号的本地回执。删除目标与同一原子提交修订号绑定，不使用无来源的删除标记。Stop 再检查授权路径无剩余差异、回执未过期且与当前工作副本一致；空提交不能生成回执。提交型流程以 `delivering` 为终态，避免提交后再产生一个未提交的 `closed` 状态差异；无需提交时直接进入 `closed`。
 
 提交前撤销交付时必须清空提交路径与证据并经用户确认；路径已清洁但回执无效时不得复活原 Goal；有效回执成立后 `delivering` 冻结。
@@ -1002,7 +1024,11 @@ project/
 │   ├── refs/
 │   │   ├── INDEX.md
 │   │   ├── operations.md
-│   │   └── compatibility.md
+│   │   ├── compatibility.md
+│   │   ├── templates/
+│   │   │   └── INDEX.md
+│   │   └── compliance/
+│   │       └── INDEX.md
 │   ├── hooks/
 │   │   ├── wali_policy.py
 │   │   ├── wali_graph.py
@@ -1012,7 +1038,8 @@ project/
 │   │   ├── test_wali_policy.py
 │   │   ├── test_wali_graph.py
 │   │   ├── test_wali_stop.py
-│   │   └── test_wali_supervision.py
+│   │   ├── test_wali_supervision.py
+│   │   └── test_wali_svn.py
 │   ├── skills/
 │   │   ├── wali-start/
 │   │   ├── wali-resume/
@@ -1041,7 +1068,7 @@ CLAUDE.md
 按路径加载的编码和测试硬约束。所有会话都需要的少量协作不变量直接保留在 `CLAUDE.md`，不再用无条件 Rule 重复。
 
 .claude/refs/
-阶段操作、Agent 恢复、SVN 交付、运行兼容要求，以及项目特有的模板、接口资料、示例和设计背景；按场景或 Spec/Task 关联选择性读取，不保存运行状态。
+跨项目稳定、低频变化的静态参考，包括 WALI 运行说明、Developer 使用的开发模板，以及 Developer/Reviewer 使用的企业内部代码检查基线。通过 `INDEX.md` 按角色与场景选择性读取，不保存具体项目知识或运行状态。
 
 .claude/hooks/
 阶段契约与工具副作用约束、共享 SVN 边界、基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
@@ -1054,6 +1081,9 @@ CLAUDE.md
 
 Goal、Spec、任务、问题和交接文件
 保存 wali-0x3 的持久意图、规范、执行与恢复状态。
+
+项目 docs 中的用户资料
+保存当前项目的需求、规格、接口、模块、项目特有模板、依赖和代码检查来源；Spec 记录采用结论。项目资料不复制到共享 Ref，项目对通用 Ref 的例外只写入 Spec。
 ```
 
 当前不单独增加证据目录。关键证据先记录在任务、问题和 `handoff.md` 中；证据规模明显增长后，再考虑 `evidence/`。
@@ -1088,8 +1118,11 @@ Goal、Spec、任务、问题和交接文件
 只适用于特定目录或文件
 → .claude/rules/
 
-只在相关任务中查阅的详细项目资料
+按角色与场景查阅的跨项目稳定说明、模板和检查基线
 → .claude/refs/
+
+当前项目的详细输入与来源资料
+→ 项目 docs/，并由 spec.md 归一化
 
 特定任务才使用的流程和知识
 → .claude/skills/
@@ -1160,11 +1193,12 @@ Coordinator 识别经过验证且具有跨项目价值的结论，提交给独�
 Goal + Spec 联合摘要与确认后防漂移检查
 带递增代次和只追加历史的 carry 指纹与跨阶段继承
 活动任务范围内的精确 SVN add/delete/move/copy/update/resolve
+可信原生 SVN Ignore 与需审计变化/本地产物分类
 工具调用前的 effect/路径/副作用检查
 工具调用后与停止前的 SVN 差异审计
 不依赖具体 Skill 名称的能力 allowlist、安全 frontmatter、加载期 shell 禁用与通用副作用约束
 Agent Skill 的定义—授权—任务关联—动作检查链路
-Rules/Refs/Skills/Spec 的项目知识分层
+Rules/Refs/Skills 与项目 docs/Spec 的跨项目参考—项目资料分层
 执行方式选择
 四个核心角色与按需只读 Architect 定义
 基于角色的 model/effort 默认映射与 Agent Teams 继承约束

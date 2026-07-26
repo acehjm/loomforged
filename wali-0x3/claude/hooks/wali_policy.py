@@ -13,7 +13,6 @@ import re
 import shlex
 import subprocess
 import sys
-import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -34,6 +33,7 @@ from wali_graph import (
 )
 from wali_svn import (
     SvnBoundaryError,
+    classify_status_xml,
     discover_working_copy_root,
     is_verified_working_copy_root,
     read_status_xml,
@@ -2364,27 +2364,9 @@ def _status_xml_from_svn(project_root: Path) -> str:
 
 def _svn_changes(status_xml: str, project_root: Path) -> list[tuple[str, str]]:
     try:
-        root = ET.fromstring(status_xml)
-    except ET.ParseError as error:
-        raise PolicyError(f"SVN status XML 无效：{error}") from error
-
-    changes: list[tuple[str, str]] = []
-    for entry in root.findall(".//entry"):
-        status = entry.find("wc-status")
-        if status is None:
-            continue
-        item = status.get("item", "").lower()
-        props = status.get("props", "").lower()
-        if item in {"", "normal", "none"} and props not in {"", "normal", "none"}:
-            item = f"properties-{props}"
-        if item in {"", "normal", "none"}:
-            continue
-        raw_path = entry.get("path", "")
-        relative_path = _relative_path(project_root, raw_path)
-        if relative_path is None:
-            relative_path = posixpath.normpath(raw_path.replace("\\", "/"))
-        changes.append((relative_path, item))
-    return changes
+        return list(classify_status_xml(project_root, status_xml).auditable_changes)
+    except SvnBoundaryError as error:
+        raise PolicyError(str(error)) from error
 
 
 def _path_fingerprint(project_root: Path, relative_path: str) -> str:
