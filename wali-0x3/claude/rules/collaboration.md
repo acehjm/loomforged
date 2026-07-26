@@ -1,0 +1,33 @@
+# WALI 协作规则
+
+- 每次行动前读取 `goal.md` 的完整阶段契约。`phase` 只是索引，真实权限由 status、Goal 确认摘要、`allowed_effects`、`allowed_capabilities`、`write_scope`、差异清单和四个布尔开关共同决定。
+- `clarifying` 只能分轮提取事实、询问高影响问题并更新固定的 `goal.md`/`spec.md`/`handoff.md`。模糊输入使用开放式访谈，已有资料使用规格压力测试；两者都必须形成 Spec，且不能在用户联合确认 Goal + Spec 前拆分实施任务或编码。
+- 阶段转换必须一次更新完整契约字段组并通过策略检查；不得单独改 `phase`、扩大 `write_scope` 或开启布尔开关绕过阶段边界。
+- 目标、任务、问题、交接状态和证据必须分别写入 `docs/wali-0x3/` 对应文件，不能只存在于会话或 Agent Teams 内部任务列表。
+- 所有 Requirement 必须关联验收条件，所有验收条件必须有 Requirement 和 Spec 判定规则，所有任务必须关联验收条件；治理性工作也应先建立对应关系。问题至少关联一个有效任务或验收条件。
+- Coordinator 在澄清阶段识别当前 Goal 适用的 Rules 和 Refs，把稳定标识、版本、适用范围与本 Goal 的选择写入 Spec。Rules 是规范性约束，Refs 只按任务提供详细模板、兼容矩阵、接口资料或示例；Ref 与 Goal/Spec/Rule/真实代码冲突时必须回到澄清。
+- 一个 Agent 同时只认领一个主要任务。并行任务必须拥有互斥的文件范围；发现重叠时立即协调，不做竞争性覆盖。
+- 任务只能按 `pending → working → review → done` 前进；真实阻断使用 `blocked` 并记录原因。实现者不能跳过独立验证直接标记 `done`；任何 done Task 必须有执行证据和不同于负责人的 Reviewer、Tester 或用户验证，任何 verified automatic AC 至少连接一个已完成的 required Task。
+- 问题只能按 `open → fixing → verify → closed` 闭环；修复者不能仅凭自己的自检关闭问题。
+- 用户的新指令与现有目标冲突时，不静默改写目标；列出差异并由 Coordinator 更新契约。
+- 用户的新指令实质改变已确认 Goal 时，清空确认证据和 `goal_definition_digest` 并返回 `clarifying`，不把它静默并入当前实施任务。
+- 不覆盖、不回退、不提交与当前任务无关的用户改动。
+- Subagent 适合独立结果；Agent Teams 只用于边界清晰且需要持续协作的并行工作。任务小、同文件或强顺序依赖时不用团队。
+- Architect 是按需只读顾问，只在跨模块、接口/数据迁移、重要质量属性或高代价技术分歧会改变规范时启用；它只提供方案比较与验证建议，不直接修改 Goal、Spec 或实现，也不代替用户和 Coordinator 决策。
+- 模型与思考深度按角色使用默认映射：Coordinator `opus/high`、Architect `opus/xhigh`、Reviewer `opus/high`、Developer 和 Tester `sonnet/high`。模型用家族别名，不固定版本；`max` 只可作为经成本/延迟权衡后的单次升级，不写入固定角色。
+- 普通 Subagent 使用自身 `model`/`effort`；Agent Teams teammate 使用角色的 `model`，但 `effort` 继承 lead。只需 Architect 深度分析时单独调用它；不得误以为 teammate frontmatter 的 `effort` 在团队内独立生效。环境或组织上限覆盖配置时，以运行界面显示的实际值为准。
+- Agent 运行状态与 WALI Task 状态分离。Agent Teams 共享任务标题必须包含且只能包含一个稳定 `T-XXX`；运行 `completed` 不等于 Task `done`，运行 `failed` 也不自动改变 Task 或生成替代实现。
+- `TaskCompleted` 与 `TeammateIdle` 只用于阻止运行事件和活动 Task/证据不一致；`StopFailure` 只能记录失败和恢复要求。判断停滞必须交叉核对 Agent 面板或 `/tasks`、transcript、本地监督状态、Task 和 SVN 差异，不以单一超时下结论。
+- Agent 失败后先冻结对应 Task 与路径所有权并审计差异，优先恢复原 Agent；确实无法恢复时才以同一 Task ID、Spec、范围、现有差异和失败证据启动替代者。不得自动回退、清理、覆盖或提交。
+- 每轮交接必须说明 SVN 工作副本 URL、工作副本修订信息、工作副本状态、完成项、进行项、验证结果、问题、风险和下一项可执行任务。
+- Markdown 状态文件是 Graph Engineering 工作图的唯一真实来源，主追踪链为 Requirement → AC → Task → Evidence，并由 Issue、依赖、负责人和验证者补充关系；不创建持久化图副本或 GraphRAG 索引。Coordinator 负责接受节点和关系变更，其他角色只提出建议。
+- 任务只能从当前可执行前沿认领。并行执行还必须通过修改范围互斥检查；范围不明时顺序执行。
+- Skill、Agent、脚本和工具的能力不等于写入授权。只有项目内、列入 `allowed_capabilities` 且不含 lifecycle hook、动态 shell 或绕过权限配置的声明式能力可以调用；副作用未知时默认拒绝。
+- Task 确需 Skill 时使用 `Skill:<name>` 建立“所用 Skill”方法边；该名称必须已获当前 Goal 授权，相关 Agent 必须具备 `Skill` 工具并只按角色定义的时机、输出和停止条件调用。新增 Skill 文件本身不构成接入或授权。
+- 未经目标契约或用户明确授权，不创建五个 WALI 状态文件之外的治理产物；调用后用 `svn status` 与差异确认没有夹带自动生成文件。
+- 不为具体 Skill 或文件名维护黑名单。无论调用什么当前或未来能力，都先做通用能力预检，其后的每个实际工具动作继续由同一阶段契约约束，调用后再用 SVN 差异审计核对。
+- `rules/`、`refs/`、`skills/` 和 Agent 定义属于控制面，普通开发任务不得顺手修改；硬约束写 Rule，详细说明和模板写 Ref，一次性选择写 Spec。
+- 实现转入检查前用 `carry` 递增代次，旧代只追加到历史，当前代冻结实时合法差异；检查、验收和交付只继承未变化的当前代指纹，修复后建立下一代而不覆盖旧代。会话中断先用 `handoff-digest` 绑定完整 Goal、交接正文、任务图与工作副本，再设置 `stop_intent: handoff`；字段镜像或摘要过期时不得停止，也不伪装成完成或阻断。
+- 存在与当前 `active_task` 绑定的未恢复 Agent 失败时，交接必须记录精确 `supervision_event`、`recovery_action`（`resume`、`replace`、`wait_user` 或 `terminate_goal`）和非占位 `recovery_evidence`；完成有效恢复后再清空这些字段。无活动任务的失败保留为诊断事件，不据此虚构 Task 状态。
+- `stop_intent: handoff` 与 `phase: blocked` 是可恢复暂停，不是 Goal 退出。成功退出只能在完整完成校验通过后记录 `completed`；取消、被替代或安全中止必须进入 `terminated`，让 `status` 与 `exit_outcome` 一致，记录退出原因、证据、替代 Goal（若有）和未提交变更处置，并获得用户当场确认。退出不自动授权清理、回退或删除。
+- 冻结终态启动新 Goal 必须使用不同 ID，清零 carry、清空旧能力与提交授权，并把当前全部非治理差异重新归入 `preexisting_changes`；随后修复固定 Spec 身份和 handoff。已完成交付不得以原 Goal ID 返回澄清。

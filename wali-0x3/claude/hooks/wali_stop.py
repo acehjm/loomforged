@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic state-consistency gate for WALI goal transitions.
+"""Deterministic graph and state checks for WALI goal transitions.
 
 The hook does not claim that project tests passed. It verifies that Markdown
 state and transition evidence are internally consistent. Actual project
@@ -11,15 +11,49 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from pathlib import Path
-from typing import Iterable
+
+from wali_graph import (
+    CRITERION_COLUMNS,
+    GraphLoadError,
+    ISSUE_COLUMNS,
+    TASK_COLUMNS,
+    TableParseError,
+    frontmatter as _frontmatter,
+    has_evidence as _has_evidence,
+    load_graph,
+    normalized as _state,
+    read_text as _read,
+    table_rows as _table_rows,
+    validate_graph,
+)
+from wali_policy import (
+    PolicyError,
+    _status_xml_from_svn,
+    _svn_working_copy_root,
+    _verified_svn_root,
+    audit_changes,
+    delivery_completion_reasons,
+    handoff_state_digest,
+    load_contract,
+    validate_project_contract,
+)
+from wali_supervision import recovery_handoff_reasons
 
 
 STATE_DIR = Path("docs/wali-0x3")
-REQUIRED_FILES = ("goal.md", "todo.md", "issues.md", "progress.md")
-GOAL_STATUSES = {"draft", "active", "waiting_user", "blocked", "done"}
+REQUIRED_FILES = ("goal.md", "spec.md", "todo.md", "issues.md", "handoff.md")
+GOAL_STATUSES = {
+    "draft",
+    "active",
+    "waiting_user",
+    "blocked",
+    "done",
+    "cancelled",
+    "superseded",
+    "aborted",
+}
 WAIT_REASONS = {"none", "direction", "acceptance"}
 CRITERION_TYPES = {"automatic", "human"}
 CRITERION_STATES = {"pending", "verified"}
@@ -28,138 +62,6 @@ TASK_STATES = {"pending", "working", "review", "blocked", "done"}
 ISSUE_SEVERITIES = {"blocker", "high", "medium", "low"}
 ISSUE_STATES = {"open", "fixing", "verify", "closed"}
 INDEPENDENT_VERIFIERS = {"reviewer", "tester", "user"}
-EMPTY_EVIDENCE = {
-    "",
-    "-",
-    "—",
-    "待补充",
-    "待验证",
-    "待用户验收",
-    "待记录",
-    "pending",
-    "n/a",
-}
-
-
-def _without_comments(text: str) -> str:
-    return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-
-
-def _frontmatter(text: str) -> dict[str, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}
-
-    values: dict[str, str] = {}
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if ":" not in line or line[:1].isspace():
-            continue
-        key, value = line.split(":", 1)
-        values[key.strip()] = value.strip().strip("\"'")
-    return values
-
-
-class TableParseError(ValueError):
-    """Raised when a WALI state table cannot be parsed without data loss."""
-
-
-def _cells(line: str) -> list[str]:
-    """Split a Markdown table row while preserving escaped and code-span pipes."""
-
-    content = line.strip()
-    if content.startswith("|"):
-        content = content[1:]
-    if content.endswith("|"):
-        content = content[:-1]
-
-    cells: list[str] = []
-    current: list[str] = []
-    code_delimiter = 0
-    index = 0
-
-    while index < len(content):
-        character = content[index]
-        if character == "\\" and index + 1 < len(content):
-            next_character = content[index + 1]
-            if next_character == "|":
-                current.append("|")
-            else:
-                current.extend((character, next_character))
-            index += 2
-            continue
-
-        if character == "`":
-            run_end = index
-            while run_end < len(content) and content[run_end] == "`":
-                run_end += 1
-            run_length = run_end - index
-            if code_delimiter == 0:
-                code_delimiter = run_length
-            elif code_delimiter == run_length:
-                code_delimiter = 0
-            current.append(content[index:run_end])
-            index = run_end
-            continue
-
-        if character == "|" and code_delimiter == 0:
-            cells.append("".join(current).strip())
-            current = []
-        else:
-            current.append(character)
-        index += 1
-
-    cells.append("".join(current).strip())
-    return cells
-
-
-def _is_separator(cells: Iterable[str]) -> bool:
-    cells = list(cells)
-    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
-
-
-def _table_rows(text: str, source: str) -> list[dict[str, str]]:
-    """Return Markdown table rows keyed by their header labels."""
-
-    lines = _without_comments(text).splitlines()
-    rows: list[dict[str, str]] = []
-    index = 0
-
-    while index + 1 < len(lines):
-        if not lines[index].lstrip().startswith("|"):
-            index += 1
-            continue
-
-        headers = _cells(lines[index])
-        separator = _cells(lines[index + 1])
-        if not _is_separator(separator) or len(headers) != len(separator):
-            index += 1
-            continue
-
-        index += 2
-        while index < len(lines) and lines[index].lstrip().startswith("|"):
-            values = _cells(lines[index])
-            if len(values) != len(headers):
-                raise TableParseError(
-                    f"{source}:{index + 1} 表格列数错误：期望 {len(headers)}，实际 {len(values)}"
-                )
-            rows.append(dict(zip(headers, values)))
-            index += 1
-
-    return rows
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _state(value: str) -> str:
-    return value.strip().lower()
-
-
-def _has_evidence(value: str) -> bool:
-    return _state(value) not in EMPTY_EVIDENCE
 
 
 def _completion_state(
@@ -170,17 +72,17 @@ def _completion_state(
         goal_rows = [
             row
             for row in _table_rows(goal_text, "goal.md")
-            if row.get("ID", "").startswith("AC-")
+            if CRITERION_COLUMNS.issubset(row)
         ]
         todo_rows = [
             row
             for row in _table_rows(_read(state_root / "todo.md"), "todo.md")
-            if row.get("ID", "").startswith("T-")
+            if TASK_COLUMNS.issubset(row)
         ]
         issue_rows = [
             row
             for row in _table_rows(_read(state_root / "issues.md"), "issues.md")
-            if row.get("ID", "").startswith("I-")
+            if ISSUE_COLUMNS.issubset(row)
         ]
     except TableParseError as error:
         return [str(error)], []
@@ -232,14 +134,19 @@ def _completion_state(
         task_id = row.get("ID", "未知任务")
         if _state(row.get("状态", "")) != "done":
             reasons.append(f"required 任务 {task_id} 尚未 done")
-        elif not _has_evidence(row.get("执行结果/证据", "")):
-            reasons.append(f"required 任务 {task_id} 已标记 done，但缺少执行结果/证据")
+
+    for row in todo_rows:
+        task_id = row.get("ID", "未知任务")
+        if _state(row.get("状态", "")) != "done":
+            continue
+        if not _has_evidence(row.get("执行结果/证据", "")):
+            reasons.append(f"任务 {task_id} 已标记 done，但缺少执行结果/证据")
         elif _state(row.get("独立验证者", "")) not in INDEPENDENT_VERIFIERS:
             reasons.append(
-                f"required 任务 {task_id} 必须记录 reviewer、tester 或 user 作为独立验证者"
+                f"任务 {task_id} 必须记录 reviewer、tester 或 user 作为独立验证者"
             )
         elif _state(row.get("独立验证者", "")) == _state(row.get("负责人", "")):
-            reasons.append(f"required 任务 {task_id} 的独立验证者必须与负责人不同")
+            reasons.append(f"任务 {task_id} 的独立验证者必须与负责人不同")
 
     for row in issue_rows:
         issue_id = row.get("ID", "未知问题")
@@ -264,6 +171,49 @@ def _completion_state(
     return reasons, human_rows
 
 
+def _work_graph_reasons(project_root: Path) -> list[str]:
+    try:
+        return validate_graph(load_graph(project_root))
+    except GraphLoadError as error:
+        return [str(error)]
+
+
+def _handoff_reasons(
+    project_root: Path,
+    contract: dict[str, object],
+    status_xml: str | None = None,
+) -> list[str]:
+    handoff_path = project_root / STATE_DIR / "handoff.md"
+    if not handoff_path.exists():
+        return ["停止前必须更新 handoff.md，确保任务可恢复"]
+    metadata = _frontmatter(_read(handoff_path))
+    reasons: list[str] = []
+    for key in ("goal_id", "phase", "active_task", "goal_confirmation"):
+        expected = str(contract.get(key, ""))
+        if metadata.get(key, "") != expected:
+            reasons.append(f"handoff.md 的 {key} 必须与 goal.md 一致")
+    updated = metadata.get("updated", "")
+    if not updated or "YYYY" in updated:
+        reasons.append("handoff.md 必须记录真实 updated 时间")
+    recorded_digest = metadata.get("state_digest", "")
+    try:
+        expected_digest = handoff_state_digest(project_root, contract, status_xml)
+    except (OSError, PolicyError) as error:
+        reasons.append(f"无法校验 handoff.md 状态摘要：{error}")
+    else:
+        if not recorded_digest:
+            reasons.append("handoff.md 必须记录 state_digest")
+        elif recorded_digest != expected_digest:
+            reasons.append("handoff.md 已过期；state_digest 与当前 Goal、工作图或工作副本不一致")
+    reasons.extend(
+        recovery_handoff_reasons(
+            project_root,
+            svn_root_already_verified=status_xml is not None,
+        )
+    )
+    return reasons
+
+
 def evaluate_project(project_root: Path) -> list[str]:
     """Return reasons that make the current WALI goal state inconsistent."""
 
@@ -275,15 +225,72 @@ def evaluate_project(project_root: Path) -> list[str]:
     goal_text = _read(goal_path)
     metadata = _frontmatter(goal_text)
     goal_status = _state(metadata.get("status", ""))
-    if goal_status == "draft":
-        return []
-    if goal_status not in GOAL_STATUSES:
-        return ["goal status 必须是 draft、active、waiting_user、blocked 或 done"]
 
-    reasons: list[str] = []
+    if not metadata.get("phase"):
+        return ["goal.md 缺少 phase 阶段契约；请使用恢复通道重建 clarifying 契约"]
+
+    policy_reasons: list[str] = []
+    contract: dict[str, object] | None = None
+    live_status_xml: str | None = None
+    try:
+        contract = load_contract(project_root)
+    except PolicyError as error:
+        policy_reasons.append(str(error))
+    else:
+        try:
+            svn_root = _svn_working_copy_root(project_root)
+            if svn_root is not None and svn_root != project_root.resolve():
+                policy_reasons.append(
+                    "WALI Stop 必须从 SVN 工作副本根执行，不允许在普通子目录停止"
+                )
+            elif svn_root is not None:
+                live_status_xml = _status_xml_from_svn(project_root)
+                policy_reasons.extend(audit_changes(project_root, contract, live_status_xml))
+        except PolicyError as error:
+            policy_reasons.append(f"SVN 差异审计失败：{error}")
+        policy_reasons.extend(
+            validate_project_contract(
+                project_root, contract, status_xml=live_status_xml
+            )
+        )
+    if policy_reasons:
+        return policy_reasons
+
     missing = [name for name in REQUIRED_FILES if not (state_root / name).exists()]
     if missing:
-        reasons.append(f"缺少 WALI 状态文件：{', '.join(missing)}")
+        return [f"缺少 WALI 状态文件：{', '.join(missing)}"]
+
+    if goal_status == "draft":
+        if contract is not None:
+            return _handoff_reasons(project_root, contract, live_status_xml)
+        return []
+    if goal_status not in GOAL_STATUSES:
+        return [
+            "goal status 必须是 draft、active、waiting_user、blocked、done、cancelled、superseded 或 aborted"
+        ]
+
+    reasons: list[str] = []
+    if contract is not None:
+        reasons.extend(_handoff_reasons(project_root, contract, live_status_xml))
+
+    if goal_status in {"cancelled", "superseded", "aborted"}:
+        if contract is None or str(contract.get("phase", "")) != "terminated":
+            reasons.append(f"{goal_status} 目标必须处于 terminated phase")
+        return reasons
+
+    reasons.extend(_work_graph_reasons(project_root))
+
+    if contract is not None and str(contract.get("phase", "")) == "delivering":
+        if not _verified_svn_root(project_root):
+            reasons.append("delivering 必须从可验证且可写的 SVN 工作副本根完成")
+        elif live_status_xml is None:
+            reasons.append("delivering 必须在可审计的 SVN 工作副本中完成")
+        else:
+            reasons.extend(
+                delivery_completion_reasons(project_root, contract, live_status_xml)
+            )
+
+    if contract is not None and str(contract.get("stop_intent", "")) == "handoff":
         return reasons
 
     if goal_status == "blocked":
@@ -301,15 +308,16 @@ def evaluate_project(project_root: Path) -> list[str]:
             reasons.append("waiting_user 目标必须在 waiting_detail 记录问题或回测要求")
             return reasons
         if waiting_for == "direction":
-            return []
+            return reasons
 
         completion_reasons, human_rows = _completion_state(
             state_root, goal_text, require_human=False
         )
-        if completion_reasons:
-            return completion_reasons
+        reasons.extend(completion_reasons)
+        if reasons:
+            return reasons
         if all(_state(row.get("状态", "")) == "verified" for row in human_rows):
-            return ["用户验收已有证据；将 goal 状态改为 done 并更新 progress.md"]
+            return ["用户验收已有证据；将 goal 状态改为 done 并更新 handoff.md"]
         return []
 
     if waiting_for != "none":
@@ -325,9 +333,9 @@ def evaluate_project(project_root: Path) -> list[str]:
     pending_human = [row for row in human_rows if _state(row.get("状态", "")) != "verified"]
     if pending_human:
         return [
-            "自动门禁已满足但仍需用户验收；将 goal 状态改为 waiting_user、waiting_for 改为 acceptance，填写 waiting_detail 并请求用户回测"
+            "自动检查已通过但仍需用户验收；将 goal 状态改为 waiting_user、waiting_for 改为 acceptance，填写 waiting_detail 并请求用户回测"
         ]
-    return ["全部验收已有证据；将 goal 状态改为 done 并更新 progress.md"]
+    return ["全部验收已有证据；将 goal 状态改为 done 并更新 handoff.md"]
 
 
 def _run_hook(project_root: Path) -> int:
@@ -344,7 +352,7 @@ def _run_hook(project_root: Path) -> int:
 
     reasons = evaluate_project(project_root)
     if reasons:
-        reason = "WALI 状态门禁尚未满足：\n- " + "\n- ".join(reasons)
+        reason = "WALI 状态检查未通过：\n- " + "\n- ".join(reasons)
         print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
     return 0
 
