@@ -110,13 +110,16 @@ WALI 代表：
 
 > **Work · Assign · Loop · Inspect**
 
-```mermaid
-flowchart LR
-    A["Work<br/>澄清 Goal + Spec"] --> B["Assign<br/>拆解与认领任务"]
-    B --> C["Loop<br/>实现、审查、测试、修复"]
-    C --> D["Inspect<br/>映射证据并验收"]
-    D -->|"仍有缺口"| C
-    D -->|"用户验收通过"| E["Exit<br/>交付或关闭"]
+```text
+Work：澄清 Goal + Spec
+  ↓
+Assign：拆解与认领任务
+  ↓
+Loop：实现、审查、测试、修复
+  ↓
+Inspect：映射证据并验收
+  ├─ 仍有缺口 ─────────→ 回到 Loop
+  └─ 用户验收通过 ─────→ Exit：交付或关闭
 ```
 
 ### Work
