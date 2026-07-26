@@ -2,7 +2,7 @@
 name: wali-0x3-core-design
 title: wali-0x3 核心设计
 status: implemented
-version: 0.11
+version: 0.12
 date: 2026-07-26
 ---
 
@@ -345,6 +345,8 @@ status + phase + active_task
 + allow_external_writes
 + allow_svn_commit
 ```
+
+frontmatter 还必须声明 `wali_schema: 1`。Policy 对缺失或未知版本 fail closed，不对旧 Goal 做静默迁移；状态格式升级必须同时修改模板、Policy、兼容说明和回归测试。
 
 系统使用固定 phase profile，覆盖 `clarifying`、`awaiting_direction`、`planning`、`implementing`、`inspecting`、`accepting`、`blocked`、`delivering`、`closed` 和 `terminated`。`awaiting_direction` 专门等待用户选择实现方向，`accepting` 专门等待业务验收，`blocked` 只保存 Goal 与交接，不能借此提前规划；`terminated` 专门表示取消、替代或安全中止，不得伪装成功完成。任意放大 effect、路径或布尔开关都会被判为不一致。阶段转换必须原子化更新完整字段组，并符合显式转换图；实现不能直接跳过 `inspecting` 与 `accepting` 进入成功终态，不能只修改 `phase` 绕过约束。`accepting → closed/delivering` 还要在 PreToolUse 对 prospective Goal 执行完整成功收尾校验，不能先写入成功状态、再把缺失证据留给 Stop 发现。
 
@@ -923,7 +925,7 @@ WALI Task：pending → working → review → done
 - `TeammateIdle` 只约束当前 Task 的实际负责人。负责人仍持有 `working` Task 时不能静默 idle；不相关的 Architect、Reviewer 或顾问不受该 Task 阻止。
 - `StopFailure` 按事件语义只能观察，不能阻止失败。它记录错误类型、transcript 路径、最后消息摘要和当前 Goal/phase/Task，不声称已经阻止异常退出。只有事件能够绑定当前 `active_task` 时才设置强制恢复标记；没有活动任务的 Coordinator 或顾问失败保留为诊断事件，不虚构 Task 状态。
 
-运行事件保存在 SVN 工作副本本地元数据 `.svn/wali-policy/supervision.json`，通过目录锁和原子替换避免并发 Hook 写坏。该文件不是第六份项目状态，不进入 SVN；项目不创建 `progress.md`、运行日志或另一份任务表来保存同一事实。
+运行事件保存在 SVN 工作副本本地元数据 `.svn/wali-policy/supervision.json`，通过持久的 `supervision.lock` 文件、操作系统建议锁和原子替换避免并发 Hook 写坏。POSIX 使用 `fcntl.flock`，Windows 使用 `msvcrt.locking`；PID、随机令牌和获得时间只是诊断元数据，不作为锁所有权依据。互斥状态由内核持有，进程正常结束或异常退出都会自动释放，后续 Hook 复用同一文件；存活进程仍持锁时不能强占。平台没有支持的文件锁后端时直接失败，不降级为无锁写入。该文件不是第六份项目状态，不进入 SVN；项目不创建 `progress.md`、运行日志或另一份任务表来保存同一事实。
 
 Coordinator 通过 Agent 面板或 `/tasks`、`wali_supervision.py status`、transcript、WALI Task 和 SVN 差异交叉判断状态。没有新输出不等于卡死：长命令、等待用户输入和等待权限必须先分类；怀疑停滞时只做一次明确状态探测，要求返回当前步骤、最后成功动作、阻断、现有差异和下一步。
 
@@ -995,17 +997,18 @@ project/
 │   │   ├── reviewer.md
 │   │   └── tester.md
 │   ├── rules/
-│   │   ├── collaboration.md
 │   │   ├── engineering.md
-│   │   ├── testing.md
-│   │   └── supervision.md
+│   │   └── testing.md
 │   ├── refs/
-│   │   └── INDEX.md
+│   │   ├── INDEX.md
+│   │   ├── operations.md
+│   │   └── compatibility.md
 │   ├── hooks/
 │   │   ├── wali_policy.py
 │   │   ├── wali_graph.py
 │   │   ├── wali_stop.py
 │   │   ├── wali_supervision.py
+│   │   ├── wali_svn.py
 │   │   ├── test_wali_policy.py
 │   │   ├── test_wali_graph.py
 │   │   ├── test_wali_stop.py
@@ -1035,13 +1038,13 @@ CLAUDE.md
 各角色的独立定位、职责、工具和工作边界。
 
 .claude/rules/
-协作、编码和测试规则；可按路径限制加载范围。
+按路径加载的编码和测试硬约束。所有会话都需要的少量协作不变量直接保留在 `CLAUDE.md`，不再用无条件 Rule 重复。
 
 .claude/refs/
-项目特有的模板、详细接口资料、兼容矩阵、示例和设计背景；按 Spec/Task 关联选择性读取，不保存运行状态。
+阶段操作、Agent 恢复、SVN 交付、运行兼容要求，以及项目特有的模板、接口资料、示例和设计背景；按场景或 Spec/Task 关联选择性读取，不保存运行状态。
 
 .claude/hooks/
-阶段契约与工具副作用约束、SVN 基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
+阶段契约与工具副作用约束、共享 SVN 边界、基线与差异审计、工作图派生和停止状态检查，以及对应回归测试。
 
 .claude/skills/
 只在特定任务中需要的知识和多步骤流程。
@@ -1065,6 +1068,8 @@ Goal、Spec、任务、问题和交接文件
 - `wali-0x3` 状态文件位置。
 - Agent 和 Rules 的位置。
 - 不得绕过验证直接宣布完成。
+
+入口文件应控制在约 80–120 行；这只是本项目的维护预算，不是 Claude Code 的格式要求。拆成 `@import` 或没有 `paths` 的 Rules 仍会常驻上下文，不能视为缩减。详细操作放入按需 Ref，复杂流程放入 Skill。
 
 以下内容不应堆入 `CLAUDE.md`：
 

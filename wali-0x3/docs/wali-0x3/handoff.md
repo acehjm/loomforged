@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-26T12:29:41+08:00
+updated: 2026-07-26T13:41:44+08:00
 goal_id: G-001
 phase: clarifying
 active_task: none
@@ -9,7 +9,7 @@ stop_intent: continue
 supervision_event: none
 recovery_action: none
 recovery_evidence: ""
-state_digest: "dd27c35e38883cdaf0d69eba4ddb55600ed079a7c5ab89a97bc9b9af21af8e33"
+state_digest: "55cf80fe73f474fe2a9bf1957cef40cc1dae6cbbd3bdb2a70fdc624820b2e72f"
 ---
 
 # 可恢复交接
@@ -50,6 +50,11 @@ state_digest: "dd27c35e38883cdaf0d69eba4ddb55600ed079a7c5ab89a97bc9b9af21af8e33"
 - 已实现 Agent 监督与异常恢复协议、本地运行事件记录、异常恢复交接校验，以及 `TeammateIdle`、`TaskCompleted`、`StopFailure` 三类 Hook。
 - 已新增按需启用、默认只读且不拥有 Goal/Spec 的 Architect Agent。
 - 已为五个角色配置 model/effort：Coordinator `opus/high`、Architect `opus/xhigh`、Reviewer `opus/high`、Developer 与 Tester `sonnet/high`；主会话默认也使用 `opus/high`，并明确 Agent Teams 的 effort 继承限制。
+- 已将 `CLAUDE.md` 从 237 行压缩为 84 行，删除重复的无条件 collaboration/supervision Rules；详细操作与兼容说明改为按需 Refs，工程和测试 Rules 继续按路径加载。
+- 已将 `goal.md` 模板从 173 行压缩为 130 行，保留人类需要确认的事实、未知项、目标、范围、AC、检查方式和确认包，移除重复的转段与退出手册。
+- 已增加 `wali_schema: 1`、兼容能力清单和 fail-closed 版本检查；Policy、Stop 与监督事件都不会接受未知或缺失 schema，也不会静默迁移。
+- 已将监督并发控制改为持久文件配合操作系统建议锁；内核会在正常结束或崩溃时释放锁，诊断元数据不参与所有权判断，存活持锁者不可强占，也不再需要递归的陈旧锁回收标记。
+- 已提取共享 `wali_svn.py` 公共边界，Stop 与监督不再导入 Policy 私有 SVN 函数。按用户决定，四个测试文件继续保留在 `claude/hooks/` 原位。
 
 ## 当前工作
 
@@ -82,15 +87,14 @@ state_digest: "dd27c35e38883cdaf0d69eba4ddb55600ed079a7c5ab89a97bc9b9af21af8e33"
 
 | 时间 | 命令/方法 | 退出结果 | 摘要 | 关联 AC/任务 |
 | --- | --- | --- | --- | --- |
-| 2026-07-26T12:27:00+08:00 | `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py` | 0 | 141 项工作图、策略、停止、监督、恢复与角色 model/effort 回归全部通过 | WALI 控制面 |
-| 2026-07-26T12:28:00+08:00 | 阶段契约、工作图、设置 JSON、Python 编译与 `git diff --check` | 0 | 当前 clarifying 契约和工作图通过；角色定义、设置、语法和差异格式有效 | WALI 控制面 |
-| 2026-07-26T12:29:00+08:00 | Standards / Spec 双轴定向审查 | 通过 | frontmatter、策略校验、角色映射、主会话默认值和 Agent Teams 继承说明一致；无剩余发现 | 角色 model/effort |
+| 2026-07-26T13:41:00+08:00 | `python3 -m unittest -v test_wali_graph.py test_wali_policy.py test_wali_stop.py test_wali_supervision.py` | 0 | 154 项回归通过，覆盖监督 schema fail-closed、祖先 `.svn` 边界、POSIX/Windows 锁、公共 SVN 模块及既有工作图/策略/停止/监督行为 | WALI 控制面 |
 
 ## 已知问题与风险
 
 - 当前模板 Goal + Spec 尚未经具体项目用户确认，不得拆分实施任务或编码。
 - 当前只实现了通用 Skill 接入机制，没有在缺少合规标准、技术栈和项目判定规则时生成空泛的“合规审计”或“开发”Skill；具体项目应按 `refs/INDEX.md` 和 Agent 调用契约接入。
 - Agent Teams teammate 的 `effort` 继承 lead，不采用各自 Agent frontmatter；只需 Architect 使用 `xhigh` 时必须把它作为独立 Subagent。实际模型和 effort 还可能受命令行、环境变量或组织上限覆盖，应以运行界面显示为准。
+- 本存档继续把测试文件放在 `claude/hooks/`；它们不在 Hook 配置中，不会自动执行，但会随部署包保留。该取舍是用户明确决定，不再迁移。
 
 ## 工作图摘要
 

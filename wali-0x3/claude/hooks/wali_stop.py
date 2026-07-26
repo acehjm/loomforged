@@ -30,9 +30,6 @@ from wali_graph import (
 )
 from wali_policy import (
     PolicyError,
-    _status_xml_from_svn,
-    _svn_working_copy_root,
-    _verified_svn_root,
     audit_changes,
     delivery_completion_reasons,
     handoff_state_digest,
@@ -40,6 +37,12 @@ from wali_policy import (
     validate_project_contract,
 )
 from wali_supervision import recovery_handoff_reasons
+from wali_svn import (
+    SvnBoundaryError,
+    discover_working_copy_root,
+    is_verified_working_copy_root,
+    read_status_xml,
+)
 
 
 STATE_DIR = Path("docs/wali-0x3")
@@ -238,15 +241,15 @@ def evaluate_project(project_root: Path) -> list[str]:
         policy_reasons.append(str(error))
     else:
         try:
-            svn_root = _svn_working_copy_root(project_root)
+            svn_root = discover_working_copy_root(project_root)
             if svn_root is not None and svn_root != project_root.resolve():
                 policy_reasons.append(
                     "WALI Stop 必须从 SVN 工作副本根执行，不允许在普通子目录停止"
                 )
             elif svn_root is not None:
-                live_status_xml = _status_xml_from_svn(project_root)
+                live_status_xml = read_status_xml(project_root)
                 policy_reasons.extend(audit_changes(project_root, contract, live_status_xml))
-        except PolicyError as error:
+        except (PolicyError, SvnBoundaryError) as error:
             policy_reasons.append(f"SVN 差异审计失败：{error}")
         policy_reasons.extend(
             validate_project_contract(
@@ -281,7 +284,7 @@ def evaluate_project(project_root: Path) -> list[str]:
     reasons.extend(_work_graph_reasons(project_root))
 
     if contract is not None and str(contract.get("phase", "")) == "delivering":
-        if not _verified_svn_root(project_root):
+        if not is_verified_working_copy_root(project_root):
             reasons.append("delivering 必须从可验证且可写的 SVN 工作副本根完成")
         elif live_status_xml is None:
             reasons.append("delivering 必须在可审计的 SVN 工作副本中完成")

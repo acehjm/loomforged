@@ -30,6 +30,7 @@ class WaliGraphCliTest(unittest.TestCase):
         self.write(
             "goal.md",
             """---
+wali_schema: 1
 goal_id: G-001
 status: active
 ---

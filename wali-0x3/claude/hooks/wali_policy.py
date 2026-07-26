@@ -32,9 +32,16 @@ from wali_graph import (
     table_rows,
     validate_graph,
 )
+from wali_svn import (
+    SvnBoundaryError,
+    discover_working_copy_root,
+    is_verified_working_copy_root,
+    read_status_xml,
+)
 
 
 STATE_DIR = Path("docs/wali-0x3")
+WALI_SCHEMA_VERSION = "1"
 STATE_FILES = {
     "docs/wali-0x3/goal.md",
     "docs/wali-0x3/spec.md",
@@ -71,6 +78,7 @@ EFFECTS = {
     "run_checks",
 }
 REQUIRED_KEYS = {
+    "wali_schema",
     "goal_id",
     "status",
     "phase",
@@ -699,6 +707,13 @@ def validate_contract(contract: dict[str, object]) -> list[str]:
     if missing:
         reasons.append(f"阶段契约缺少字段：{', '.join(missing)}")
         return reasons
+
+    wali_schema = _string(contract, "wali_schema")
+    if wali_schema != WALI_SCHEMA_VERSION:
+        reasons.append(
+            "不支持的 wali_schema："
+            f"{wali_schema or '空'}；当前仅支持 {WALI_SCHEMA_VERSION}"
+        )
 
     phase = _string(contract, "phase").lower()
     if phase not in PHASES:
@@ -1642,43 +1657,11 @@ def _svn_node_kind(project_root: Path, path: str) -> str | None:
 
 
 def _svn_working_copy_root(project_root: Path) -> Path | None:
-    """Return the discovered WC root, including when started in a subdirectory."""
-
+    """Translate the shared SVN boundary error into a policy error."""
     try:
-        result = subprocess.run(
-            ["svn", "info", "--show-item", "wc-root"],
-            cwd=project_root,
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-    except OSError as error:
-        if (project_root / ".svn").exists():
-            raise PolicyError(f"存在 .svn 但无法执行 svn info：{error}") from error
-        return None
-    if result.returncode != 0 or not result.stdout.strip():
-        if (project_root / ".svn").exists():
-            detail = result.stderr.strip() or result.stdout.strip() or "svn info 失败"
-            raise PolicyError(f"存在 .svn 但无法确认工作副本根：{detail}")
-        return None
-    reported = Path(result.stdout.strip())
-    if not reported.is_absolute():
-        raise PolicyError("svn info 返回了非绝对工作副本根路径")
-    try:
-        return reported.resolve()
-    except OSError as error:
-        raise PolicyError(f"无法解析 SVN 工作副本根：{error}") from error
-
-
-def _verified_svn_root(project_root: Path) -> bool:
-    metadata = project_root / ".svn"
-    if not metadata.is_dir() or not os.access(metadata, os.W_OK):
-        return False
-    try:
-        reported_root = _svn_working_copy_root(project_root)
-    except PolicyError:
-        return False
-    return reported_root == project_root.resolve()
+        return discover_working_copy_root(project_root)
+    except SvnBoundaryError as error:
+        raise PolicyError(str(error)) from error
 
 
 def _exact_svn_paths(
@@ -1939,7 +1922,7 @@ def decide_tool(
                 authorized_targets
             ):
                 return Decision(False, "SVN 提交目标必须与 svn_commit_paths 完全一致")
-            if not _verified_svn_root(project_root):
+            if not is_verified_working_copy_root(project_root):
                 return Decision(
                     False,
                     "SVN 提交前必须从可验证且可写的工作副本根启动项目",
@@ -2371,17 +2354,12 @@ def _repair_decision(project_root: Path, payload: dict[str, object]) -> Decision
 
 
 def _status_xml_from_svn(project_root: Path) -> str:
-    result = subprocess.run(
-        ["svn", "status", "--xml", "--no-ignore", "."],
-        cwd=project_root,
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "svn status 失败"
-        raise PolicyError(detail)
-    return result.stdout
+    """Translate the shared SVN status error into a policy error."""
+
+    try:
+        return read_status_xml(project_root)
+    except SvnBoundaryError as error:
+        raise PolicyError(str(error)) from error
 
 
 def _svn_changes(status_xml: str, project_root: Path) -> list[tuple[str, str]]:
@@ -2757,7 +2735,7 @@ def _load_status_xml(project_root: Path, status_xml_path: Path | None) -> str:
     svn_root = _svn_working_copy_root(project_root)
     if svn_root is None:
         raise PolicyError("当前目录不在可验证的 SVN 工作副本中")
-    if svn_root != project_root.resolve() or not _verified_svn_root(project_root):
+    if svn_root != project_root.resolve() or not is_verified_working_copy_root(project_root):
         raise PolicyError("SVN 状态命令必须从可验证且可写的工作副本根运行")
     return _status_xml_from_svn(project_root)
 
@@ -3134,7 +3112,7 @@ def _run_hook(project_root: Path) -> int:
         else:
             if svn_root is not None and svn_root != project_root.resolve():
                 decision = Decision(False, "WALI 动作必须从 SVN 工作副本根执行，不允许在普通子目录启动")
-            elif svn_root is not None and not _verified_svn_root(project_root):
+            elif svn_root is not None and not is_verified_working_copy_root(project_root):
                 decision = Decision(False, "WALI 动作必须从可验证且可写的 SVN 工作副本根执行")
             elif svn_root is not None and not _save_action_snapshot(
                 project_root, payload, contract
@@ -3191,7 +3169,7 @@ def _run_post_hook(project_root: Path, status_xml_path: Path | None) -> int:
             else _svn_working_copy_root(project_root)
         )
         if svn_root is not None:
-            if svn_root != project_root.resolve() or not _verified_svn_root(project_root):
+            if svn_root != project_root.resolve() or not is_verified_working_copy_root(project_root):
                 reasons.append("当前目录不是可验证且可写的 SVN 工作副本根")
             try:
                 raw_snapshot = json.loads(

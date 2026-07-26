@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import wali_policy
+import wali_svn
 
 
 MODULE_PATH = Path(__file__).with_name("wali_policy.py")
@@ -79,6 +80,7 @@ source_mode: pressure_test
     def write_contract(self, *, extra: str = "") -> None:
         (self.state / "goal.md").write_text(
             f"""---
+wali_schema: 1
 goal_id: G-001
 status: draft
 phase: clarifying
@@ -122,6 +124,42 @@ allow_svn_commit: false
             encoding="utf-8",
         )
 
+    def test_contract_requires_the_current_wali_schema(self) -> None:
+        goal_path = self.state / "goal.md"
+        goal_path.write_text(
+            goal_path.read_text(encoding="utf-8").replace(
+                "wali_schema: 1\n", "", 1
+            ),
+            encoding="utf-8",
+        )
+
+        reasons = wali_policy.validate_contract(
+            wali_policy.load_contract(self.root)
+        )
+
+        self.assertTrue(
+            any("wali_schema" in reason for reason in reasons),
+            reasons,
+        )
+
+    def test_contract_rejects_an_unsupported_wali_schema(self) -> None:
+        goal_path = self.state / "goal.md"
+        goal_path.write_text(
+            goal_path.read_text(encoding="utf-8").replace(
+                "wali_schema: 1", "wali_schema: 2", 1
+            ),
+            encoding="utf-8",
+        )
+
+        reasons = wali_policy.validate_contract(
+            wali_policy.load_contract(self.root)
+        )
+
+        self.assertTrue(
+            any("不支持的 wali_schema" in reason for reason in reasons),
+            reasons,
+        )
+
     def seal_goal(self) -> None:
         result = self.run_policy("digest")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -151,6 +189,7 @@ allow_svn_commit: false
     def write_implementing_contract(self) -> None:
         (self.state / "goal.md").write_text(
             """---
+wali_schema: 1
 goal_id: G-001
 status: active
 phase: implementing
@@ -258,6 +297,7 @@ allow_svn_commit: false
         fingerprint = hashlib.sha256(b"file\0implemented\n").hexdigest()
         (self.state / "goal.md").write_text(
             f"""---
+wali_schema: 1
 goal_id: G-001
 status: done
 phase: delivering
@@ -748,6 +788,7 @@ allow_svn_commit: true
 | 策略测试 | `python3 -m unittest -v` | 退出码 0 |
 """
         prospective = f"""---
+wali_schema: 1
 goal_id: G-001
 status: active
 phase: planning
@@ -1937,6 +1978,7 @@ allow_svn_commit: false
                 blocked_reason = "外部依赖不可用" if phase == "blocked" else ""
                 (self.state / "goal.md").write_text(
                     f"""---
+wali_schema: 1
 goal_id: G-001
 status: {profile['status']}
 phase: {phase}
@@ -2082,19 +2124,19 @@ stop_intent: continue
 </target></status>"""
 
         with (
-            patch.object(wali_policy, "_verified_svn_root", return_value=True),
+            patch.object(wali_policy, "is_verified_working_copy_root", return_value=True),
             patch.object(wali_policy, "_status_xml_from_svn", return_value=clean),
             patch.object(wali_policy, "_svn_node_kind", return_value="file"),
         ):
             noop = wali_policy.decide_tool(self.root, contract, payload)
         with (
-            patch.object(wali_policy, "_verified_svn_root", return_value=True),
+            patch.object(wali_policy, "is_verified_working_copy_root", return_value=True),
             patch.object(wali_policy, "_status_xml_from_svn", return_value=pending),
             patch.object(wali_policy, "_svn_node_kind", return_value="dir"),
         ):
             directory = wali_policy.decide_tool(self.root, contract, payload)
         with (
-            patch.object(wali_policy, "_verified_svn_root", return_value=True),
+            patch.object(wali_policy, "is_verified_working_copy_root", return_value=True),
             patch.object(wali_policy, "_status_xml_from_svn", return_value=pending),
             patch.object(wali_policy, "_svn_node_kind", return_value="file"),
         ):
@@ -2117,7 +2159,7 @@ stop_intent: continue
             },
         }
 
-        with patch.object(wali_policy, "_verified_svn_root", return_value=False):
+        with patch.object(wali_policy, "is_verified_working_copy_root", return_value=False):
             decision = wali_policy.decide_tool(self.root, contract, payload)
 
         self.assertFalse(decision.allowed)
@@ -2138,13 +2180,31 @@ stop_intent: continue
             stderr="",
         )
 
-        with patch.object(wali_policy.subprocess, "run", return_value=nested_result):
-            nested = wali_policy._verified_svn_root(self.root)
-        with patch.object(wali_policy.subprocess, "run", return_value=root_result):
-            verified = wali_policy._verified_svn_root(self.root)
+        with patch.object(wali_svn.subprocess, "run", return_value=nested_result):
+            nested = wali_svn.is_verified_working_copy_root(self.root)
+        with patch.object(wali_svn.subprocess, "run", return_value=root_result):
+            verified = wali_svn.is_verified_working_copy_root(self.root)
 
         self.assertFalse(nested)
         self.assertTrue(verified)
+
+    def test_svn_discovery_fails_closed_when_cli_is_missing_in_a_nested_copy(
+        self,
+    ) -> None:
+        (self.root / ".svn").mkdir()
+        nested = self.root / "src" / "feature"
+        nested.mkdir(parents=True)
+
+        with patch.object(
+            wali_svn.subprocess,
+            "run",
+            side_effect=FileNotFoundError("svn"),
+        ):
+            with self.assertRaisesRegex(
+                wali_svn.SvnBoundaryError,
+                "存在 .svn 但无法执行 svn info",
+            ):
+                wali_svn.discover_working_copy_root(nested)
 
     def test_live_svn_status_commands_reject_a_nested_working_copy_directory(
         self,
@@ -2177,7 +2237,7 @@ stop_intent: continue
                 "_svn_working_copy_root",
                 return_value=self.root.resolve(),
             ),
-            patch.object(wali_policy, "_verified_svn_root", return_value=True),
+            patch.object(wali_policy, "is_verified_working_copy_root", return_value=True),
             patch.object(wali_policy, "_save_action_snapshot", return_value=False),
             redirect_stdout(stdout),
         ):
@@ -2719,7 +2779,7 @@ stop_intent: continue
             wali_policy._save_action_snapshot(self.root, payload, contract)
         stdout = io.StringIO()
         with (
-            patch.object(wali_policy, "_verified_svn_root", return_value=True),
+            patch.object(wali_policy, "is_verified_working_copy_root", return_value=True),
             patch("sys.stdin", io.StringIO(json.dumps(payload))),
             patch.object(
                 wali_policy,

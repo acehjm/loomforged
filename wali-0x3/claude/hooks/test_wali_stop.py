@@ -181,6 +181,7 @@ class WaliStopTest(unittest.TestCase):
         self.write(
             "goal.md",
             f"""---
+wali_schema: 1
 goal_id: G-001
 status: {status}
 phase: {phase}
@@ -457,10 +458,10 @@ state_digest: ""
 </target></status>"""
 
         with (
-            patch.object(wali_stop, "_status_xml_from_svn", return_value=status_xml),
+            patch.object(wali_stop, "read_status_xml", return_value=status_xml),
             patch.object(
                 wali_stop,
-                "_svn_working_copy_root",
+                "discover_working_copy_root",
                 return_value=self.root.resolve(),
             ),
         ):
@@ -682,11 +683,11 @@ state_digest: ""
         self.make_delivering(pending)
 
         with (
-            patch.object(wali_stop, "_status_xml_from_svn", return_value=pending),
-            patch.object(wali_stop, "_verified_svn_root", return_value=True),
+            patch.object(wali_stop, "read_status_xml", return_value=pending),
+            patch.object(wali_stop, "is_verified_working_copy_root", return_value=True),
             patch.object(
                 wali_stop,
-                "_svn_working_copy_root",
+                "discover_working_copy_root",
                 return_value=self.root.resolve(),
             ),
         ):
@@ -699,11 +700,11 @@ state_digest: ""
         self.make_delivering(clean)
 
         with (
-            patch.object(wali_stop, "_status_xml_from_svn", return_value=clean),
-            patch.object(wali_stop, "_verified_svn_root", return_value=True),
+            patch.object(wali_stop, "read_status_xml", return_value=clean),
+            patch.object(wali_stop, "is_verified_working_copy_root", return_value=True),
             patch.object(
                 wali_stop,
-                "_svn_working_copy_root",
+                "discover_working_copy_root",
                 return_value=self.root.resolve(),
             ),
         ):
@@ -745,11 +746,11 @@ state_digest: ""
         )
 
         with (
-            patch.object(wali_stop, "_status_xml_from_svn", return_value=clean),
-            patch.object(wali_stop, "_verified_svn_root", return_value=True),
+            patch.object(wali_stop, "read_status_xml", return_value=clean),
+            patch.object(wali_stop, "is_verified_working_copy_root", return_value=True),
             patch.object(
                 wali_stop,
-                "_svn_working_copy_root",
+                "discover_working_copy_root",
                 return_value=self.root.resolve(),
             ),
             patch.object(
@@ -763,11 +764,11 @@ state_digest: ""
         self.assertEqual(reasons, [])
 
         with (
-            patch.object(wali_stop, "_status_xml_from_svn", return_value=clean),
-            patch.object(wali_stop, "_verified_svn_root", return_value=True),
+            patch.object(wali_stop, "read_status_xml", return_value=clean),
+            patch.object(wali_stop, "is_verified_working_copy_root", return_value=True),
             patch.object(
                 wali_stop,
-                "_svn_working_copy_root",
+                "discover_working_copy_root",
                 return_value=self.root.resolve(),
             ),
             patch.object(

@@ -10,6 +10,7 @@ give that event decision control.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -17,9 +18,21 @@ import re
 import sys
 import tempfile
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import BinaryIO
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None  # type: ignore[assignment]
 
 from wali_graph import (
     GraphLoadError,
@@ -31,9 +44,13 @@ from wali_graph import (
 )
 from wali_policy import (
     PolicyError,
-    _svn_working_copy_root,
-    _verified_svn_root,
     load_contract,
+    validate_contract,
+)
+from wali_svn import (
+    SvnBoundaryError,
+    discover_working_copy_root,
+    is_verified_working_copy_root,
 )
 
 
@@ -42,6 +59,8 @@ COMPLETABLE_TASK_STATES = {"review", "done"}
 MAX_EVENTS = 200
 STATE_VERSION = 1
 RECOVERY_ACTIONS = {"resume", "replace", "wait_user", "terminate_goal"}
+LOCK_WAIT_ATTEMPTS = 40
+LOCK_POLL_SECONDS = 0.05
 
 
 class SupervisionError(RuntimeError):
@@ -55,6 +74,13 @@ class EventDecision:
     wali_task_id: str = ""
     runtime_state: str = ""
     recovery_required: bool = False
+
+
+@dataclass(frozen=True)
+class RegistryLock:
+    path: Path
+    handle: BinaryIO
+    token: str
 
 
 def _value(mapping: dict[str, object], key: str) -> str:
@@ -88,9 +114,15 @@ def _active_context(
 ) -> tuple[dict[str, object], Task | None, list[str]]:
     try:
         contract = load_contract(project_root)
-        graph = load_graph(project_root)
-    except (PolicyError, GraphLoadError) as error:
+    except PolicyError as error:
         return {}, None, [str(error)]
+    contract_reasons = validate_contract(contract)
+    if contract_reasons:
+        return contract, None, contract_reasons
+    try:
+        graph = load_graph(project_root)
+    except GraphLoadError as error:
+        return contract, None, [str(error)]
     graph_reasons = validate_graph(graph)
     active_task = _value(contract, "active_task")
     task = next((candidate for candidate in graph.tasks if candidate.id == active_task), None)
@@ -272,12 +304,15 @@ def _event_record(
 
 def _registry_path(project_root: Path) -> Path | None:
     try:
-        svn_root = _svn_working_copy_root(project_root)
-    except PolicyError as error:
+        svn_root = discover_working_copy_root(project_root)
+    except SvnBoundaryError as error:
         raise SupervisionError(str(error)) from error
     if svn_root is None:
         return None
-    if svn_root != project_root.resolve() or not _verified_svn_root(project_root):
+    if (
+        svn_root != project_root.resolve()
+        or not is_verified_working_copy_root(project_root)
+    ):
         raise SupervisionError("监督事件必须从可验证且可写的 SVN 工作副本根记录")
     return project_root / ".svn" / "wali-policy" / "supervision.json"
 
@@ -304,19 +339,98 @@ def _read_registry(path: Path) -> dict[str, object]:
     return registry
 
 
+def _try_file_lock(handle: BinaryIO) -> bool:
+    if fcntl is not None:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            if error.errno in {errno.EACCES, errno.EAGAIN}:
+                return False
+            raise SupervisionError(f"无法锁定监督状态：{error}") from error
+        return True
+
+    if msvcrt is not None:
+        try:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError as error:
+            if error.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                return False
+            raise SupervisionError(f"无法锁定监督状态：{error}") from error
+        return True
+
+    raise SupervisionError("当前平台不支持 WALI 监督状态文件锁")
+
+
+def _unlock_file(handle: BinaryIO) -> None:
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        return
+    if msvcrt is not None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def _acquire_registry_lock(lock_path: Path) -> RegistryLock:
+    for _attempt in range(LOCK_WAIT_ATTEMPTS):
+        try:
+            handle = lock_path.open("a+b")
+        except OSError as error:
+            raise SupervisionError(f"无法打开监督状态锁：{error}") from error
+
+        try:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            if not _try_file_lock(handle):
+                handle.close()
+                time.sleep(LOCK_POLL_SECONDS)
+                continue
+        except Exception:
+            handle.close()
+            raise
+
+        token = uuid.uuid4().hex
+        try:
+            owner = json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "token": token,
+                    "acquired_at": time.time(),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+            handle.seek(0)
+            handle.truncate()
+            handle.write(owner)
+            handle.flush()
+            os.fsync(handle.fileno())
+        except OSError as error:
+            try:
+                _unlock_file(handle)
+            except OSError:
+                pass
+            handle.close()
+            raise SupervisionError(f"无法记录监督状态锁所有者：{error}") from error
+        return RegistryLock(lock_path, handle, token)
+    raise SupervisionError("监督状态正被另一个 Hook 更新")
+
+
+def _release_registry_lock(lock: RegistryLock) -> None:
+    try:
+        _unlock_file(lock.handle)
+    except OSError:
+        pass
+    finally:
+        lock.handle.close()
+
+
 def _write_registry(path: Path, event: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.parent / "supervision.lock"
-    acquired = False
-    for _attempt in range(40):
-        try:
-            lock_path.mkdir()
-            acquired = True
-            break
-        except FileExistsError:
-            time.sleep(0.05)
-    if not acquired:
-        raise SupervisionError("监督状态正被另一个 Hook 更新")
+    lock = _acquire_registry_lock(lock_path)
 
     temporary_path: Path | None = None
     try:
@@ -374,10 +488,7 @@ def _write_registry(path: Path, event: dict[str, object]) -> None:
                 temporary_path.unlink()
             except OSError:
                 pass
-        try:
-            lock_path.rmdir()
-        except OSError:
-            pass
+        _release_registry_lock(lock)
 
 
 def record_event(project_root: Path, event: dict[str, object]) -> bool:
