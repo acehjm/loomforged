@@ -2,8 +2,6 @@
 
 WALI（Work · Assign · Loop · Inspect）用于让 Claude Code 开发工作可分派、可检查、可恢复、可验收。
 
-本仓库是可见存档，配置目录必须保留为 `claude/`；使用者部署到目标项目时自行改名为 `.claude/`。目标运行环境只使用 SVN，文中的 `.claude/...` 均指部署路径。
-
 ## 权威状态
 
 `docs/wali-0x3/` 中五个文件共同保存项目状态：
