@@ -15,7 +15,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from wali_work import STATE_DIR, WorkStateError, frontmatter, load_state, validate_state
+from wali_work import STATE_DIR, WORK_FILE, WorkStateError, frontmatter, load_state, validate_state
 
 
 HANDOFF_FILE = STATE_DIR / "handoff.md"
@@ -41,10 +41,10 @@ def _valid_timestamp(value: str) -> bool:
     if not value or "YYYY" in value:
         return False
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return False
-    return True
+    return "T" in value and timestamp.tzinfo is not None
 
 
 def handoff_reasons(project_root: Path) -> list[str]:
@@ -68,7 +68,7 @@ def handoff_reasons(project_root: Path) -> list[str]:
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
-            reasons.append(f"handoff.md 的 {key} 必须与 goal.md 一致")
+            reasons.append(f"handoff.md 的 {key} 必须与当前 Goal/Work 一致")
     if not _valid_timestamp(metadata.get("updated", "")):
         reasons.append("handoff.md 必须记录真实 updated 时间")
     if not _meaningful_section(text, "## Current State"):
@@ -80,12 +80,13 @@ def handoff_reasons(project_root: Path) -> list[str]:
 
 def evaluate_stop(project_root: Path) -> list[str]:
     try:
-        state = load_state(project_root)
-    except WorkStateError:
+        work_text = (project_root / WORK_FILE).read_text(encoding="utf-8")
+        work_metadata = frontmatter(work_text, "work.md")
+    except (OSError, WorkStateError):
         # An absent or malformed optional control plane must not make Claude
         # unable to end a normal session. PreToolUse retains the repair channel.
         return []
-    if state.stop_intent != "handoff":
+    if work_metadata.get("stop_intent", "continue").lower() != "handoff":
         return []
     return handoff_reasons(project_root)
 
@@ -95,6 +96,9 @@ def _run_hook(project_root: Path) -> int:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, OSError) as error:
         print(json.dumps({"systemMessage": f"WALI Stop 输入无效：{error}"}, ensure_ascii=False))
+        return 0
+    if not isinstance(payload, dict):
+        print(json.dumps({"systemMessage": "WALI Stop 输入必须是对象"}, ensure_ascii=False))
         return 0
     if payload.get("stop_hook_active") or payload.get("background_tasks") or payload.get("session_crons"):
         return 0

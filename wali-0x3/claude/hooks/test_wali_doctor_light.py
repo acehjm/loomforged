@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,17 +16,37 @@ PROJECT_ROOT = SCRIPT.parents[2]
 
 
 class WaliDoctorLightTest(unittest.TestCase):
-    def test_current_archive_has_a_healthy_lightweight_control_plane(self) -> None:
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--project-root", str(PROJECT_ROOT)],
+    def run_doctor(self, project_root: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--project-root", str(project_root)],
             capture_output=True,
             check=False,
             text=True,
         )
 
+    def test_current_archive_has_a_healthy_lightweight_control_plane(self) -> None:
+        result = self.run_doctor(PROJECT_ROOT)
+
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("FAIL", result.stdout)
         self.assertIn("goal.md + work.md", result.stdout)
+
+    def test_doctor_rejects_incomplete_hook_matchers_and_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            shutil.copytree(PROJECT_ROOT, project)
+            settings_path = project / "claude" / "settings.json"
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            settings["hooks"]["PreToolUse"][0]["matcher"] = "Bash"
+            settings["hooks"]["PostToolUse"][0]["matcher"] = "Write"
+            settings_path.write_text(json.dumps(settings), encoding="utf-8")
+            (project / "claude" / "agents" / "architect.md").unlink()
+
+            result = self.run_doctor(project)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("[FAIL] 布局", result.stdout)
+            self.assertIn("[FAIL] Hook 设置", result.stdout)
 
 
 if __name__ == "__main__":

@@ -80,6 +80,22 @@ class WaliWorkCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("active_task", result.stdout)
 
+    def test_phase_runtime_fields_are_cross_validated(self) -> None:
+        self.write("work.md", WORK.replace("outcome: none", "outcome: completed"))
+        outcome = self.run_cli("check")
+        self.assertEqual(outcome.returncode, 1)
+        self.assertIn("outcome", outcome.stdout)
+
+        paused = WORK.replace("phase: work", "phase: paused").replace(
+            "active_task: T-001",
+            "active_task: T-999",
+        )
+        self.write("work.md", paused)
+        waiting = self.run_cli("check")
+        self.assertEqual(waiting.returncode, 1)
+        self.assertIn("waiting_for", waiting.stdout)
+        self.assertIn("active_task", waiting.stdout)
+
     def test_frontier_uses_task_dependencies_without_a_persistent_graph(self) -> None:
         work = WORK.replace(
             "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | developer | none |",

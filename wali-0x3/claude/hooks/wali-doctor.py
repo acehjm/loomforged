@@ -22,6 +22,7 @@ CORE_PROJECT_PATHS = (
 CORE_CONTROL_PATHS = (
     "settings.json",
     "agents/coordinator.md",
+    "agents/architect.md",
     "agents/developer.md",
     "agents/reviewer.md",
     "agents/tester.md",
@@ -89,9 +90,14 @@ def _settings(project_root: Path) -> Diagnostic:
     stop_entry = stop[0]
     if not all(isinstance(value, dict) for value in (pre_entry, post_entry, stop_entry)):
         return Diagnostic("FAIL", "Hook 设置", "Hook 条目格式无效")
-    pre_matcher = str(pre_entry.get("matcher", ""))
-    if any(tool in pre_matcher.split("|") for tool in ("Read", "Glob", "Grep")):
-        return Diagnostic("FAIL", "Hook 设置", "普通读取工具不应经过 Policy")
+    pre_tools = {tool for tool in str(pre_entry.get("matcher", "")).split("|") if tool}
+    post_tools = {tool for tool in str(post_entry.get("matcher", "")).split("|") if tool}
+    expected_pre = {"Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"}
+    expected_post = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+    if pre_tools != expected_pre:
+        return Diagnostic("FAIL", "Hook 设置", "PreToolUse matcher 必须只覆盖 Bash 与写入工具")
+    if post_tools != expected_post:
+        return Diagnostic("FAIL", "Hook 设置", "PostToolUse matcher 必须只覆盖写入工具")
     expected = (
         (pre_entry, "wali_policy.py", "hook"),
         (post_entry, "wali_policy.py", "post-hook"),

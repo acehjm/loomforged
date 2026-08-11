@@ -115,6 +115,8 @@ Policy 保护：
 
 工作区内普通读取、搜索、测试、构建和检查命令无需预先登记。
 
+Scope 对 Write/Edit 等原生写入工具是强门禁；Bash 还识别重定向、`touch/rm/mv/cp/tee/sed -i` 等显式文件变更并应用同一门禁。Hook 无法从任意测试或构建程序内部可靠推断隐藏副作用，因此它不是操作系统沙箱；需要强隔离的并发或不可信脚本应使用独立工作区/沙箱。
+
 ### PostToolUse
 
 PostHook 只在治理状态写入后检查 Goal/Work 是否完整。发现不完整时返回提示，不返回 block；下一次对 `goal.md`、`work.md` 或 `handoff.md` 的修复始终允许。
@@ -132,7 +134,7 @@ PostHook 只在治理状态写入后检查 Goal/Work 是否完整。发现不完
 
 本地命令默认可用，但以下操作仍受保护：
 
-- `rm -rf`、`git reset --hard`、强制 `git clean`、`svn revert/cleanup` 等破坏性命令。
+- `rm -rf`、`git reset --hard`、强制 `git clean`、`svn revert`，以及带删除未版本化/忽略项参数的 `svn cleanup` 等破坏性命令。普通 `svn cleanup` 保留可用。
 - Git/SVN 推送或提交、上传、发布、集群修改等外部写入。
 - 本地 SVN 调度超出 active Task Scope 的路径。
 

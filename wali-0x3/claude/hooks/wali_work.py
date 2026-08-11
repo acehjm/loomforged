@@ -104,6 +104,22 @@ class WorkState:
     issues: tuple[Issue, ...]
 
 
+@dataclass(frozen=True)
+class PolicyTask:
+    id: str
+    status: str
+    scopes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PolicyContext:
+    goal_id: str
+    phase: str
+    active_task: str
+    allow_external_writes: bool
+    task: PolicyTask | None
+
+
 def _read(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
@@ -347,6 +363,61 @@ def load_state(
     return WorkState(goal, *parsed)
 
 
+def load_policy_context(project_root: Path) -> PolicyContext:
+    """Load only fields needed by high-frequency PreToolUse decisions."""
+
+    goal_metadata = frontmatter(_read(project_root / GOAL_FILE), "goal.md")
+    work_text = _read(project_root / WORK_FILE)
+    work_metadata = frontmatter(work_text, "work.md")
+    goal_required = {"agent", "goal_id", "confirmed", "allow_external_writes"}
+    work_required = {"goal_id", "phase", "active_task"}
+    missing_goal = sorted(goal_required - goal_metadata.keys())
+    missing_work = sorted(work_required - work_metadata.keys())
+    if missing_goal:
+        raise WorkStateError("goal.md 缺少门禁字段：" + ", ".join(missing_goal))
+    if missing_work:
+        raise WorkStateError("work.md 缺少门禁字段：" + ", ".join(missing_work))
+    if goal_metadata["agent"] != "wali-0x3":
+        raise WorkStateError("goal.md 的 agent 必须是 wali-0x3")
+    if goal_metadata["goal_id"] != work_metadata["goal_id"]:
+        raise WorkStateError("work.md 的 goal_id 必须与 goal.md 一致")
+    phase = work_metadata["phase"].lower()
+    if phase not in PHASES:
+        raise WorkStateError(f"未知 phase：{phase or '空'}")
+    confirmed = _boolean(goal_metadata["confirmed"], field="confirmed")
+    if phase != "define" and not confirmed:
+        raise WorkStateError(f"{phase} phase 要求 confirmed=true")
+    active_task = work_metadata["active_task"]
+    task_rows = [
+        row
+        for row in table(work_text, "## Tasks", "work.md")
+        if row.get("ID", "").strip() == active_task
+    ]
+    if len(task_rows) > 1:
+        raise WorkStateError(f"active_task ID 重复：{active_task}")
+    task = None
+    if task_rows:
+        row = task_rows[0]
+        scopes = _scopes(row.get("Scope", ""))
+        if not scopes or any(not _scope_prefix(scope) for scope in scopes):
+            raise WorkStateError(f"{active_task} 缺少明确 Scope")
+        task = PolicyTask(
+            id=active_task,
+            status=row.get("Status", "").strip().lower(),
+            scopes=scopes,
+        )
+    return PolicyContext(
+        goal_id=goal_metadata["goal_id"],
+        phase=phase,
+        active_task=active_task,
+        allow_external_writes=_boolean(
+            goal_metadata["allow_external_writes"],
+            field="allow_external_writes",
+        ),
+        task=task,
+    )
+
+
 def _duplicates(values: list[str]) -> tuple[str, ...]:
     return tuple(value for value, count in Counter(values).items() if value and count > 1)
 
@@ -401,8 +472,14 @@ def validate_state(state: WorkState) -> list[str]:
         reasons.append("waiting_for 值无效")
     if state.outcome not in OUTCOMES:
         reasons.append("outcome 值无效")
+    if state.phase == "paused" and state.waiting_for == "none":
+        reasons.append("paused phase 必须记录 waiting_for")
+    if state.phase != "paused" and state.waiting_for != "none":
+        reasons.append("只有 paused phase 可以设置 waiting_for")
     if state.phase == "done" and state.outcome == "none":
         reasons.append("done phase 必须记录 outcome")
+    if state.phase != "done" and state.outcome != "none":
+        reasons.append("只有 done phase 可以记录最终 outcome")
     if state.work_goal_id != goal.id:
         reasons.append("work.md 的 goal_id 必须与 goal.md 一致")
 
@@ -423,6 +500,8 @@ def validate_state(state: WorkState) -> list[str]:
         reasons.append(f"{state.phase} phase 的 active_task 必须引用真实 Task")
     if state.phase in {"define", "done"} and state.active_task != "none":
         reasons.append(f"{state.phase} phase 的 active_task 必须是 none")
+    if state.phase == "paused" and state.active_task != "none" and state.active_task not in task_ids:
+        reasons.append("paused phase 的 active_task 必须是 none 或真实 Task")
     for requirement in goal.requirements:
         if not re.fullmatch(r"R-\d+", requirement.id):
             reasons.append(f"Requirement ID 格式无效：{requirement.id or '空'}")

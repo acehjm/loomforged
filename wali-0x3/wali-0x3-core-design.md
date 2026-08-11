@@ -74,6 +74,8 @@ action + Goal + active Task → allow / ask / deny
 
 它不会在每次动作中执行完整完成判断，也不写前置快照。状态缺失或不完整时，治理文件修复始终允许；实现写入暂停到状态恢复。
 
+PreToolUse 的实现门禁只解析 Goal/Work frontmatter 和 active Task 行，不遍历 Requirement、AC、Issue 或依赖环。Bash 会覆盖常见显式文件变更，但任意程序内部的隐藏副作用超出命令文本可可靠推断的范围；需要硬边界时使用独立工作区或操作系统沙箱。
+
 ### Stop
 
 Stop 的默认接口是 allow。只有调用者显式设置 `stop_intent: handoff` 时，才验证 handoff 游标。这样“暂停并恢复”仍可信，但普通回答结束不会制造治理写入。

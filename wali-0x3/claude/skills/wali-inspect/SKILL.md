@@ -10,6 +10,6 @@ disable-model-invocation: true
 4. Reviewer 报告范围、正确性、安全、兼容性、复杂度和测试遗漏；Tester 按 AC 的 Method 验证正常、失败和边界行为。
 5. 发现写入 `work.md` 的 Issues；需要修复时将 phase 返回 `work`，只让 active Task Scope 获得实现写入。
 6. 独立验证通过后，将 Task 设为 `done`，填写 Evidence 和独立 Verifier；同步更新 Acceptance 状态和证据。
-7. 仍有任务时使用 `frontier` 选择下一项。全部完成并获得用户验收后运行 `wali_work.py check --checkpoint done`，再将 phase 设为 `done`、outcome 设为 `completed`。
+7. 仍有任务时使用 `frontier` 选择下一项。全部完成并获得用户验收后运行 `wali_work.py check --checkpoint done`，再将 phase 设为 `done`、active_task 设为 `none`、outcome 设为 `completed`。
 
 输出 Requirement → AC → Task → Evidence 映射、命令结果、未关闭问题、风险和下一步。普通 Inspect 不创建 handoff。

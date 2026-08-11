@@ -234,6 +234,45 @@ class WaliLivenessTest(unittest.TestCase):
         self.assertEqual(output["decision"], "block")
         self.assertIn("handoff.md", output["reason"])
 
+    def test_explicit_handoff_allows_a_matching_cursor(self) -> None:
+        work_path = self.state / "work.md"
+        work_path.write_text(
+            work_path.read_text(encoding="utf-8").replace(
+                "stop_intent: continue",
+                "stop_intent: handoff",
+            ),
+            encoding="utf-8",
+        )
+        (self.state / "handoff.md").write_text(
+            """---
+goal_id: G-001
+phase: work
+active_task: T-001
+updated: 2026-08-11T12:30:00+08:00
+---
+
+# Handoff
+
+## Current State
+
+- 自动检查已通过，当前任务仍在实现。
+
+## Next Step
+
+- 完成 T-001 并记录证据。
+""",
+            encoding="utf-8",
+        )
+
+        result = self.run_hook(
+            STOP,
+            {"hook_event_name": "Stop", "stop_hook_active": False},
+            "--hook",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main()
