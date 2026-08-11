@@ -71,8 +71,7 @@ def _settings(project_root: Path) -> Diagnostic:
         settings = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         return Diagnostic("FAIL", "Hook 设置", str(error))
-    if settings.get("disableSkillShellExecution") is not True:
-        return Diagnostic("FAIL", "Hook 设置", "必须关闭 Skill 加载期 shell")
+    skill_shell_disabled = settings.get("disableSkillShellExecution") is not False
     hooks = settings.get("hooks")
     if not isinstance(hooks, dict):
         return Diagnostic("FAIL", "Hook 设置", "缺少 hooks")
@@ -107,7 +106,9 @@ def _settings(project_root: Path) -> Diagnostic:
         command, arguments = _hook_command(entry)
         if command != "python3" or not any(item.endswith(script) for item in arguments) or argument not in arguments:
             return Diagnostic("FAIL", "Hook 设置", f"{script} 注册无效")
-    return Diagnostic("PASS", "Hook 设置", "只拦截副作用工具；普通读取不进入 Policy")
+    if skill_shell_disabled:
+        return Diagnostic("WARN", "Hook 设置", "Skill 动态上下文命令已禁用；外部 Skill 功能可能受限")
+    return Diagnostic("PASS", "Hook 设置", "只拦截副作用工具；受信任 Skill 动态命令可用")
 
 
 def _state(project_root: Path) -> Diagnostic:

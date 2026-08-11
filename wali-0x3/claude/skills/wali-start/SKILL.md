@@ -24,7 +24,6 @@ Define 期间保持：
 # goal.md
 agent: wali-0x3
 confirmed: false
-allow_external_writes: false
 
 # work.md
 phase: define

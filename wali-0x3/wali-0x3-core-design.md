@@ -13,9 +13,9 @@ status: implemented
 
 治理只有在减少错误、越权或恢复成本时才值得存在。普通读取、搜索、测试和停止不应被项目管理元数据阻断。
 
-### 拒绝必须可恢复
+### 例外必须可恢复
 
-每次拒绝都必须留下至少一个可执行修复动作。PostHook 发生在副作用之后，因此只能报告和引导修复，不能把已经变更的状态锁死。
+可恢复或需要判断的例外优先请求用户确认，只有灾难性操作才拒绝。每次拒绝都必须留下至少一个可执行修复动作。PostHook 发生在副作用之后，因此只能报告和引导修复，不能把已经变更的状态锁死。
 
 ### 稳定定义与运行状态分离
 
@@ -35,7 +35,6 @@ Policy 关注 Scope、控制面、破坏性命令和外部写入。项目命令�
 agent: wali-0x3
 goal_id: G-001
 confirmed: true
-allow_external_writes: false
 ```
 
 `work.md` frontmatter 保存运行字段：
@@ -72,7 +71,7 @@ Policy 的外部接口是一次工具动作：
 action + Goal + active Task → allow / ask / deny
 ```
 
-它不会在每次动作中执行完整完成判断，也不写前置快照。状态缺失或不完整时，治理文件修复始终允许；实现写入暂停到状态恢复。
+它不会在每次动作中执行完整完成判断，也不写前置快照。状态缺失或不完整时，治理文件修复始终允许；其他实现写入请求当场确认，不形成死锁。
 
 PreToolUse 的实现门禁只解析 Goal/Work frontmatter 和 active Task 行，不遍历 Requirement、AC、Issue 或依赖环。Bash 会覆盖常见显式文件变更，但任意程序内部的隐藏副作用超出命令文本可可靠推断的范围；需要硬边界时使用独立工作区或操作系统沙箱。
 
@@ -102,16 +101,13 @@ Stop 的默认接口是 allow。只有调用者显式设置 `stop_intent: handof
 
 ## 6. 外部副作用
 
-外部写入需要两层条件：
+外部写入不使用持久授权开关。PreToolUse 对实际命令直接返回 `ask`，由用户核对目标和影响；一次确认不自动授权后续外部动作。
 
-1. Goal 明确设置 `allow_external_writes: true`。
-2. PreToolUse 对实际命令返回 `ask`，由用户当场确认。
-
-历史文字、Task 状态和 Skill/Agent 调用都不能替代第二层确认。
+Skill/Agent 调用本身直接允许。项目启用受信任 Skill 的 `!` 动态上下文命令；这类命令在 Skill 加载阶段执行，不是模型发起的普通 Bash 工具调用，因此信任边界位于“调用该 Skill”之前。外部 Skill 必须先审查来源和定义；Skill 后续发起的普通工具动作仍按 Policy 分级。
 
 ## 7. 失败与恢复
 
-- 状态无效：只暂停实现写入，允许修复 Goal/Work/Handoff 和运行本地诊断命令。
+- 状态无效：允许修复 Goal/Work/Handoff 和运行本地诊断命令；其他实现写入请求当场确认。
 - Agent 失败：核对 transcript、Work 和真实差异；不使用默认生命周期监督锁。
 - 等待用户：进入 paused，记录 `waiting_for`，不伪装成完成。
 - 取消或安全中止：进入 done，并用 outcome 记录 `cancelled` 或 `aborted`。

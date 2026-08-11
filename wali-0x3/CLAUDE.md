@@ -17,11 +17,11 @@
 
 | phase | 目的 | 实现写入 |
 | --- | --- | --- |
-| `define` | 澄清并确认 Goal，建立初始 Work | 禁止 |
-| `work` | 实施一个 `active_task` | 只允许该 Task 的 `Scope` |
-| `verify` | 独立审查、测试和问题闭环 | 禁止 |
-| `paused` | 等待方向、验收或外部条件 | 禁止 |
-| `done` | 完成或诚实结束 | 禁止 |
+| `define` | 澄清并确认 Goal，建立初始 Work | 需要确认 |
+| `work` | 实施一个 `active_task` | Task `Scope` 内直接允许，例外需要确认 |
+| `verify` | 独立审查、测试和问题闭环 | 需要确认 |
+| `paused` | 等待方向、验收或外部条件 | 需要确认 |
+| `done` | 完成或诚实结束 | 需要确认 |
 
 阶段不是每个动作都要更新的进度条。只有职责真正变化时才转段。
 
@@ -46,8 +46,9 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 
 - Read、Glob 和 Grep 不进入 WALI Policy。
 - 工作区内普通本地命令和检查命令默认可用，不要求逐字登记到 Goal。
-- Hook 重点阻止破坏性命令、外部写入、控制面修改和 active Task Scope 外的实现写入。
-- 外部写入必须先在 Goal 中设置 `allow_external_writes: true`，实际调用仍由 PreToolUse 请求用户当场确认。
+- Hook 对可恢复的破坏性命令、外部写入、控制面修改和 active Task Scope 外的实现写入请求当场确认；只硬拒绝灾难性删除。
+- 外部写入不需要先修改 Goal 授权，实际调用由 PreToolUse 请求用户核对目标和影响。
+- Agent 与 Skill 调用本身不进入 WALI Policy。项目允许受信任 Skill 的 `!` 动态上下文命令；外部 Skill 在调用前必须审查来源与 `SKILL.md`，其后续 Bash/写入仍按普通工具处理。
 - PostToolUse 发现状态不完整时只提示，不阻断后续修复。`goal.md`、`work.md` 和 `handoff.md` 永远保留修复通道。
 - Stop 只在 `stop_intent: handoff` 时检查可恢复交接；普通停止不因任务未完成或缺少 handoff 而阻断。
 

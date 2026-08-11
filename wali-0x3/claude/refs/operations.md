@@ -37,8 +37,8 @@ PostHook 报告状态不完整时，`goal.md`、`work.md` 和 `handoff.md` 始�
 ## SVN
 
 - 读取：`svn status`、`svn diff --internal-diff`、`svn info`、`svn log`。
-- 本地调度：只在 `work` 中对 active Task Scope 内的精确路径执行 `svn add/delete/move/copy/update/resolve`。
-- `svn commit` 是外部写入；必须设置 `allow_external_writes: true`，PreToolUse 仍请求用户当场确认。
+- 本地调度：`work` 中 active Task Scope 内的精确路径直接允许；其他路径请求用户确认。
+- `svn commit` 是外部写入，PreToolUse 直接请求用户当场确认，不要求先改 Goal。
 - 提交授权不包含 update、冲突解决、部署或其他远程动作。
 
 WALI 不自动回退、清理、提交，也不自动修改 `svn:ignore` 属性。

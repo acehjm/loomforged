@@ -48,6 +48,21 @@ class WaliDoctorLightTest(unittest.TestCase):
             self.assertIn("[FAIL] 布局", result.stdout)
             self.assertIn("[FAIL] Hook 设置", result.stdout)
 
+    def test_doctor_only_warns_when_skill_dynamic_commands_are_locally_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            shutil.copytree(PROJECT_ROOT, project)
+            settings_path = project / "claude" / "settings.json"
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            settings["disableSkillShellExecution"] = True
+            settings_path.write_text(json.dumps(settings), encoding="utf-8")
+
+            result = self.run_doctor(project)
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("[WARN] Hook 设置", result.stdout)
+            self.assertIn("Skill", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

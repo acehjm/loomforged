@@ -618,29 +618,69 @@ def _project_state(project_root: Path) -> tuple[Goal | None, WorkState | None, l
     return goal, state, validate_state(state)
 
 
+def _catastrophic_local_command(project_root: Path, command: str) -> bool:
+    protected = {Path("/").resolve(), Path.home().resolve(), project_root.resolve()}
+    protected.update(project_root.resolve().parents)
+    for raw_target in _explicit_file_targets(command):
+        if raw_target in {"~", "$HOME", "${HOME}"}:
+            return True
+        try:
+            expanded = os.path.expandvars(
+                raw_target.replace("${CLAUDE_PROJECT_DIR}", str(project_root)).replace(
+                    "$CLAUDE_PROJECT_DIR", str(project_root)
+                )
+            )
+            wildcard_indexes = [
+                expanded.index(token)
+                for token in ("*", "?", "[")
+                if token in expanded
+            ]
+            if wildcard_indexes:
+                prefix = expanded[: min(wildcard_indexes)].rstrip("/") or "."
+                wildcard_root = Path(prefix).expanduser()
+                if not wildcard_root.is_absolute():
+                    wildcard_root = project_root / wildcard_root
+                if wildcard_root.resolve() in protected:
+                    return True
+            target = Path(expanded).expanduser()
+            if not target.is_absolute():
+                target = project_root / target
+            if target.resolve() in protected:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _decide_bash(project_root: Path, command: str) -> Decision:
     if not command.strip():
         return Decision(False, "Bash 命令不能为空")
-    if _dangerous_local_command(command):
-        return Decision(False, "命令包含破坏性本地操作；请由用户明确执行或拆成可审计动作")
+    dangerous_local = _dangerous_local_command(command)
+    if dangerous_local:
+        if _catastrophic_local_command(project_root, command):
+            return Decision(False, "命令可能删除项目根、主目录或系统根，已拒绝")
     external_write = _external_write(command)
     svn_mutations = _svn_local_mutations(project_root, command)
     file_targets = _explicit_file_targets(command)
-    if not external_write and not svn_mutations and not file_targets:
+    if not dangerous_local and not external_write and not svn_mutations and not file_targets:
         # Common local commands do not depend on project-management state.
         return Decision(True)
-    goal: Goal | None = None
+    confirmation_reasons: list[str] = []
+    if dangerous_local:
+        confirmation_reasons.append("命令包含可恢复但高风险的本地操作")
     implementation_targets: list[str] = []
     for raw_target in file_targets:
         if raw_target == "/dev/null":
             continue
         relative = _relative_path(project_root, raw_target)
         if relative is None:
-            return Decision(False, "显式文件写入目标必须位于项目内")
+            confirmation_reasons.append("显式文件写入目标位于项目外")
+            continue
         if relative in STATE_FILES:
             continue
         if relative == "CLAUDE.md" or relative.startswith(CONTROL_PREFIXES):
-            return Decision(False, f"Bash 不得修改 wali-0x3 控制面：{relative}")
+            confirmation_reasons.append(f"命令会修改 wali-0x3 控制面 {relative}")
+            continue
         implementation_targets.append(relative)
     if svn_mutations or implementation_targets:
         try:
@@ -648,34 +688,40 @@ def _decide_bash(project_root: Path, command: str) -> Decision:
         except WorkStateError:
             context = None
         if context is None or context.phase != "work":
-            return Decision(False, "只有有效的 work phase 可以执行显式本地文件变更")
-        task = context.task
-        if task is None or task.status != "working":
-            return Decision(False, "本地文件变更要求 active_task 处于 working")
-        invalid_files = [
-            target
-            for target in implementation_targets
-            if not any(_scope_matches(target, scope) for scope in task.scopes)
-        ]
-        if invalid_files:
-            return Decision(False, "Bash 文件写入必须位于 active_task Scope")
-        for _operation, targets in svn_mutations:
-            invalid = [
-                target
-                for target in targets
-                if not any(_scope_matches(target, scope) for scope in task.scopes)
-            ]
-            if not targets or invalid:
-                return Decision(False, "SVN 目标必须是 active_task Scope 内的精确路径")
+            confirmation_reasons.append("当前不是有效的 work phase")
+        else:
+            task = context.task
+            if task is None or task.status != "working":
+                confirmation_reasons.append("active_task 未处于 working")
+            else:
+                invalid_files = [
+                    target
+                    for target in implementation_targets
+                    if not any(_scope_matches(target, scope) for scope in task.scopes)
+                ]
+                if invalid_files:
+                    confirmation_reasons.append("Bash 文件写入超出 active_task Scope")
+                invalid_svn = [
+                    targets
+                    for _operation, targets in svn_mutations
+                    if not targets
+                    or any(
+                        not any(_scope_matches(target, scope) for scope in task.scopes)
+                        for target in targets
+                    )
+                ]
+                if invalid_svn:
+                    confirmation_reasons.append(
+                        "SVN 目标不在 active_task Scope 内或无法精确识别"
+                    )
     if external_write:
-        if goal is None:
-            try:
-                goal = load_goal(project_root)
-            except WorkStateError:
-                return Decision(False, "当前 Goal 不可读，不能授权外部写入")
-        if not goal.allow_external_writes:
-            return Decision(False, "当前 Goal 未授权外部写入")
-        return Decision(True, "命令会写入外部系统，请核对目标后确认", ask=True)
+        confirmation_reasons.append("命令会写入外部系统")
+    if confirmation_reasons:
+        return Decision(
+            True,
+            "；".join(dict.fromkeys(confirmation_reasons)) + "，请确认",
+            ask=True,
+        )
     return Decision(True)
 
 
@@ -701,21 +747,21 @@ def decide_tool(project_root: Path, payload: dict[str, object]) -> Decision:
         return Decision(True)
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
         if path is None:
-            return Decision(False, "写入路径不在项目内")
+            return Decision(True, "写入目标不在项目内，请核对目标后确认", ask=True)
         if path == "CLAUDE.md" or path.startswith(CONTROL_PREFIXES):
-            return Decision(False, f"项目任务不得修改 wali-0x3 控制面：{path}")
+            return Decision(True, f"将修改 wali-0x3 控制面：{path}", ask=True)
         try:
             context = load_policy_context(project_root)
         except WorkStateError:
-            return Decision(False, "工作门禁不可读；请先修复 goal.md 或 work.md")
+            return Decision(True, "工作状态不可读；继续写入需要确认", ask=True)
         if context.phase != "work":
             phase = context.phase
-            return Decision(False, f"{phase} phase 不允许修改实现：{path}")
+            return Decision(True, f"{phase} phase 的实现写入需要确认：{path}", ask=True)
         task = context.task
         if task is None or task.status != "working":
-            return Decision(False, "实现写入要求 active_task 处于 working")
+            return Decision(True, "active_task 未处于 working；继续写入需要确认", ask=True)
         if not any(_scope_matches(path, scope) for scope in task.scopes):
-            return Decision(False, f"写入超出 active_task Scope：{path}")
+            return Decision(True, f"写入超出 active_task Scope：{path}", ask=True)
         return Decision(True)
     # Tools outside the configured hook matcher remain governed by Claude's own
     # permission system. If invoked here explicitly, do not invent a denial.

@@ -2,7 +2,6 @@
 agent: wali-0x3
 goal_id: pending
 confirmed: false
-allow_external_writes: false
 ---
 
 # Goal

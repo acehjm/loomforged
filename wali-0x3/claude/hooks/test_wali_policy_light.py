@@ -53,13 +53,13 @@ class WaliPolicyLightTest(unittest.TestCase):
             "reason": output["permissionDecisionReason"],
         }
 
-    def test_implementation_writes_use_only_the_active_task_scope(self) -> None:
+    def test_implementation_writes_allow_active_scope_and_ask_outside_it(self) -> None:
         allowed = self.hook("Write", {"file_path": str(self.root / "src/feature/new.py"), "content": ""})
-        denied = self.decision("Write", {"file_path": str(self.root / "src/other.py"), "content": ""})
+        outside = self.decision("Write", {"file_path": str(self.root / "src/other.py"), "content": ""})
 
         self.assertEqual(allowed, "")
-        self.assertEqual(denied["decision"], "deny")
-        self.assertIn("Scope", denied["reason"])
+        self.assertEqual(outside["decision"], "ask")
+        self.assertIn("Scope", outside["reason"])
 
         work = self.state / "work.md"
         work.write_text(
@@ -74,16 +74,16 @@ class WaliPolicyLightTest(unittest.TestCase):
             "",
         )
 
-    def test_verify_phase_cannot_modify_implementation(self) -> None:
+    def test_verify_phase_asks_before_modifying_implementation(self) -> None:
         work = self.state / "work.md"
         work.write_text(work.read_text(encoding="utf-8").replace("phase: work", "phase: verify"), encoding="utf-8")
 
-        denied = self.decision("Edit", {"file_path": str(self.root / "src/feature/app.py")})
+        decision = self.decision("Edit", {"file_path": str(self.root / "src/feature/app.py")})
 
-        self.assertEqual(denied["decision"], "deny")
-        self.assertIn("verify phase", denied["reason"])
+        self.assertEqual(decision["decision"], "ask")
+        self.assertIn("verify phase", decision["reason"])
 
-    def test_destructive_commands_remain_blocked_without_blocking_normal_shell(self) -> None:
+    def test_recoverable_destructive_commands_ask_without_blocking_normal_shell(self) -> None:
         self.assertEqual(self.hook("Bash", {"command": "python3 -m unittest -v tests/test_feature.py"}), "")
         self.assertEqual(self.hook("Bash", {"command": "python3 -m unittest 2>&1"}), "")
         self.assertEqual(self.hook("Bash", {"command": "svn cleanup"}), "")
@@ -92,118 +92,114 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertEqual(self.hook("Bash", {"command": "truncate -s 0 src/feature/cache.txt"}), "")
         self.assertEqual(self.hook("Bash", {"command": "touch -t 202608111200 src/feature/cache.txt"}), "")
 
-        denied = self.decision("Bash", {"command": "git reset --hard HEAD~1"})
-        self.assertEqual(denied["decision"], "deny")
-        self.assertIn("破坏性", denied["reason"])
+        risky = self.decision("Bash", {"command": "git reset --hard HEAD~1"})
+        self.assertEqual(risky["decision"], "ask")
+        self.assertIn("高风险", risky["reason"])
 
         split_flags = self.decision("Bash", {"command": "rm -r -f build"})
-        self.assertEqual(split_flags["decision"], "deny")
+        self.assertEqual(split_flags["decision"], "ask")
 
         svn_options = self.decision("Bash", {"command": "svn --non-interactive revert src/feature/app.py"})
-        self.assertEqual(svn_options["decision"], "deny")
+        self.assertEqual(svn_options["decision"], "ask")
 
         git_options = self.decision("Bash", {"command": "git -C . reset --hard HEAD~1"})
-        self.assertEqual(git_options["decision"], "deny")
+        self.assertEqual(git_options["decision"], "ask")
 
         cleanup = self.decision("Bash", {"command": "svn cleanup --remove-unversioned"})
-        self.assertEqual(cleanup["decision"], "deny")
+        self.assertEqual(cleanup["decision"], "ask")
 
-    def test_external_writes_require_goal_authority_and_live_confirmation(self) -> None:
-        denied = self.decision("Bash", {"command": "git push origin main"})
-        self.assertEqual(denied["decision"], "deny")
-        self.assertEqual(
-            self.decision("Bash", {"command": "git -C . push origin main"})["decision"],
-            "deny",
+    def test_external_writes_ask_for_live_confirmation_without_state_toggle(self) -> None:
+        commands = (
+            "git push origin main",
+            "git -C . push origin main",
+            "curl --json '{\"ok\":true}' https://example.test",
+            "curl --json '{\"text\":\"a|b\"}' https://example.test",
+            "env git push origin main",
+            "cat payload | ssh deploy.example",
+            "(git push origin main)",
+            "sh -c 'git push origin main'",
+            "time git push origin main",
+            "timeout 5 git push origin main",
+            "docker --context prod push image:tag",
+            "kubectl --context prod apply -f deploy.yaml",
+            "kubectl -v 6 apply -f deploy.yaml",
+            "kubectl --as admin apply -f deploy.yaml",
+            "curl --request=POST https://example.test",
+            "curl --data-urlencode a=b https://example.test",
+            "python3 check.py && git push origin main",
+            "svn add src/outside.py && git push origin main",
         )
-        self.assertEqual(
-            self.decision("Bash", {"command": "curl --json '{\"ok\":true}' https://example.test"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "curl --json '{\"text\":\"a|b\"}' https://example.test"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "env git push origin main"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "cat payload | ssh deploy.example"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "(git push origin main)"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "sh -c 'git push origin main'"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "time git push origin main"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "timeout 5 git push origin main"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "docker --context prod push image:tag"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "kubectl --context prod apply -f deploy.yaml"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "kubectl -v 6 apply -f deploy.yaml"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "kubectl --as admin apply -f deploy.yaml"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "curl --request=POST https://example.test"})["decision"],
-            "deny",
-        )
-        self.assertEqual(
-            self.decision("Bash", {"command": "curl --data-urlencode a=b https://example.test"})["decision"],
-            "deny",
-        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(
+                    self.decision("Bash", {"command": command})["decision"],
+                    "ask",
+                )
 
-        goal = self.state / "goal.md"
-        goal.write_text(
-            goal.read_text(encoding="utf-8").replace(
-                "allow_external_writes: false",
-                "allow_external_writes: true",
-            ),
-            encoding="utf-8",
-        )
-        asked = self.decision("Bash", {"command": "git push origin main"})
-        self.assertEqual(asked["decision"], "ask")
-
-        chained = self.decision("Bash", {"command": "python3 check.py && git push origin main"})
-        self.assertEqual(chained["decision"], "ask")
-
-        mixed = self.decision(
+    def test_compound_confirmation_reports_every_detected_risk(self) -> None:
+        scoped_external = self.decision(
             "Bash",
-            {"command": "svn add src/outside.py && git push origin main"},
+            {"command": "touch src/outside.py && svn commit -m 'deliver'"},
         )
-        self.assertEqual(mixed["decision"], "deny")
+        destructive_external = self.decision(
+            "Bash",
+            {"command": "git reset --hard HEAD~1 && git push origin main"},
+        )
+
+        self.assertEqual(scoped_external["decision"], "ask")
+        self.assertIn("Scope", scoped_external["reason"])
+        self.assertIn("外部", scoped_external["reason"])
+        self.assertEqual(destructive_external["decision"], "ask")
+        self.assertIn("高风险", destructive_external["reason"])
+        self.assertIn("外部", destructive_external["reason"])
+
+    def test_external_effects_ask_without_a_goal_toggle(self) -> None:
+        (self.state / "goal.md").unlink()
+        (self.state / "work.md").unlink()
+
+        decision = self.decision("Bash", {"command": "svn commit -m 'deliver'"})
+
+        self.assertEqual(decision["decision"], "ask")
+        self.assertIn("外部", decision["reason"])
+
+    def test_scope_and_control_plane_exceptions_ask_instead_of_dead_ending(self) -> None:
+        outside = self.decision(
+            "Write",
+            {"file_path": str(self.root / "src/outside.py"), "content": ""},
+        )
+        control = self.decision(
+            "Write",
+            {"file_path": str(self.root / "CLAUDE.md"), "content": ""},
+        )
+
+        self.assertEqual(outside["decision"], "ask")
+        self.assertEqual(control["decision"], "ask")
+
+    def test_recoverable_destructive_commands_ask_but_catastrophic_delete_denies(self) -> None:
+        reset = self.decision("Bash", {"command": "git reset --hard HEAD~1"})
+        local_delete = self.decision("Bash", {"command": "rm -rf build"})
+
+        self.assertEqual(reset["decision"], "ask")
+        self.assertEqual(local_delete["decision"], "ask")
+        for command in ("rm -rf /", "rm -rf .", "rm -rf ~", "rm -rf *"):
+            with self.subTest(command=command):
+                self.assertEqual(
+                    self.decision("Bash", {"command": command})["decision"],
+                    "deny",
+                )
 
     def test_compound_local_svn_mutations_still_obey_task_scope(self) -> None:
         allowed = self.hook(
             "Bash",
             {"command": "python3 check.py && svn add src/feature/new.py"},
         )
-        denied = self.decision(
+        outside = self.decision(
             "Bash",
             {"command": "python3 check.py && svn add src/outside.py"},
         )
 
         self.assertEqual(allowed, "")
-        self.assertEqual(denied["decision"], "deny")
+        self.assertEqual(outside["decision"], "ask")
 
     def test_explicit_shell_file_writes_obey_scope_and_control_plane(self) -> None:
         self.assertEqual(
@@ -245,22 +241,25 @@ class WaliPolicyLightTest(unittest.TestCase):
             {"command": "ln -t src/outside src/feature/app.py"},
         )
 
-        self.assertEqual(outside["decision"], "deny")
-        self.assertEqual(control["decision"], "deny")
-        self.assertEqual(settings["decision"], "deny")
-        self.assertEqual(quoted["decision"], "deny")
-        self.assertEqual(clobber["decision"], "deny")
-        self.assertEqual(sed_many["decision"], "deny")
-        self.assertEqual(sed_long["decision"], "deny")
-        self.assertEqual(restore["decision"], "deny")
-        self.assertEqual(checkout["decision"], "deny")
-        self.assertEqual(checkout_short["decision"], "deny")
-        self.assertEqual(checkout_head["decision"], "deny")
-        self.assertEqual(checkout_force["decision"], "deny")
-        self.assertEqual(cp_target["decision"], "deny")
-        self.assertEqual(mv_target["decision"], "deny")
-        self.assertEqual(install_target["decision"], "deny")
-        self.assertEqual(ln_target["decision"], "deny")
+        for decision in (
+            outside,
+            control,
+            settings,
+            quoted,
+            clobber,
+            sed_many,
+            sed_long,
+            restore,
+            checkout,
+            checkout_short,
+            checkout_head,
+            checkout_force,
+            cp_target,
+            mv_target,
+            install_target,
+            ln_target,
+        ):
+            self.assertEqual(decision["decision"], "ask")
 
         work = self.state / "work.md"
         work.write_text(
@@ -268,12 +267,17 @@ class WaliPolicyLightTest(unittest.TestCase):
             encoding="utf-8",
         )
         verify = self.decision("Bash", {"command": "touch src/feature/verify.py"})
-        self.assertEqual(verify["decision"], "deny")
+        self.assertEqual(verify["decision"], "ask")
+
+    def test_skill_and_agent_invocation_are_not_restricted_by_wali(self) -> None:
+        self.assertEqual(self.hook("Skill", {"skill": "external:example"}), "")
+        self.assertEqual(self.hook("Agent", {"description": "delegate"}), "")
 
     def test_settings_skip_read_tools_and_do_not_enable_team_supervision_by_default(self) -> None:
         settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
         matcher = settings["hooks"]["PreToolUse"][0]["matcher"]
 
+        self.assertIs(settings.get("disableSkillShellExecution"), False)
         self.assertNotIn("Read", matcher)
         self.assertNotIn("Glob", matcher)
         self.assertNotIn("Grep", matcher)

@@ -11,9 +11,9 @@
 WALI 只保留会直接提高交付可信度的治理：
 
 - 开工前确认目标、范围和验收方法。
-- 实现写入受 active Task Scope 约束。
+- active Task Scope 内的实现写入直接通过，例外写入当场确认。
 - 实现者自检与独立验证分离。
-- 外部写入需要显式授权和当场确认。
+- 外部写入需要当场确认，不要求先改状态文件申请授权。
 - 真正交接时留下最小恢复游标。
 
 它明确不做：
@@ -31,7 +31,7 @@ WALI 只保留会直接提高交付可信度的治理：
 
 稳定契约，包含：
 
-- Goal ID、确认状态和外部写入授权。
+- Goal ID 和确认状态。
 - 用户要观察到的结果、背景、In/Out/Constraints。
 - `R-XXX` Requirement。
 - `AC-XXX` Acceptance Criterion 和验证方法。
@@ -103,19 +103,21 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 
 ### PreToolUse
 
-只匹配 Bash 和写入工具。Read、Glob、Grep、Agent、Skill 不经过 WALI Policy；Agent/Skill 内部产生的 Bash 或写入仍会分别接受检查。
+只匹配 Bash 和写入工具。Read、Glob、Grep、Agent、Skill 不经过 WALI Policy；Agent/Skill 后续发起的 Bash 或写入仍会分别接受检查。
 
-Policy 保护：
+Policy 是软门禁：
 
-- 破坏性本地命令。
-- 未授权外部写入。
-- WALI 控制面文件。
-- active Task Scope 外的实现写入。
-- 非 work 阶段的实现修改。
+- 普通命令和 active Task Scope 内写入直接 `allow`。
+- 外部写入、控制面修改、Scope 外写入、非 work 阶段写入和可恢复的高风险本地操作返回 `ask`。
+- 只有可能删除项目根、主目录或系统根的灾难性操作返回 `deny`。
 
 工作区内普通读取、搜索、测试、构建和检查命令无需预先登记。
 
-Scope 对 Write/Edit 等原生写入工具是强门禁；Bash 还识别重定向、`touch/rm/mv/cp/tee/sed -i` 等显式文件变更并应用同一门禁。Hook 无法从任意测试或构建程序内部可靠推断隐藏副作用，因此它不是操作系统沙箱；需要强隔离的并发或不可信脚本应使用独立工作区/沙箱。
+Scope 对 Write/Edit 等原生写入工具是默认边界；Bash 还识别重定向、`touch/rm/mv/cp/tee/sed -i` 等显式文件变更并应用相同分级。超出边界时由用户当场决定，而不是为了例外先重写 Goal/Work。Hook 无法从任意测试或构建程序内部可靠推断隐藏副作用，因此它不是操作系统沙箱；需要强隔离的并发或不可信脚本应使用独立工作区/沙箱。
+
+### 外部 Skill
+
+项目设置允许受信任 Skill 使用 `!` 动态上下文命令，Skill 和 Agent 调用本身不由 WALI 拦截。Claude Code 会在 Skill 内容交给模型前执行这类命令，因此它们不是普通的模型 Bash 工具调用；安装或调用外部 Skill 前应审查来源和 `SKILL.md`。Skill 后续由模型发起的 Bash/写入仍按上述软门禁处理。
 
 ### PostToolUse
 
@@ -134,11 +136,11 @@ PostHook 只在治理状态写入后检查 Goal/Work 是否完整。发现不完
 
 本地命令默认可用，但以下操作仍受保护：
 
-- `rm -rf`、`git reset --hard`、强制 `git clean`、`svn revert`，以及带删除未版本化/忽略项参数的 `svn cleanup` 等破坏性命令。普通 `svn cleanup` 保留可用。
+- `rm -rf`、`git reset --hard`、强制 `git clean`、`svn revert`，以及带删除未版本化/忽略项参数的 `svn cleanup` 等可恢复高风险命令会请求确认。普通 `svn cleanup` 直接可用。
 - Git/SVN 推送或提交、上传、发布、集群修改等外部写入。
 - 本地 SVN 调度超出 active Task Scope 的路径。
 
-外部写入需要先把 Goal 中的 `allow_external_writes` 设为 `true`，实际工具调用仍返回 `ask`，由用户当场核对。
+外部写入直接返回 `ask`，由用户当场核对目标与影响；不再为了获得许可修改 Goal。
 
 ## 角色
 
@@ -187,7 +189,7 @@ python3 .claude/hooks/wali-doctor.py --project-root .
 ```
 
 4. 在真实 SVN 工作副本检查 `svn info`、`svn status` 和 `svn diff --internal-diff`。
-5. 做四个冒烟测试：普通本地命令、Scope 内写入、Scope 外拒绝、显式 handoff。
+5. 做五个冒烟测试：普通本地命令、Skill 调用、Scope 内写入、Scope 外确认、显式 handoff。
 
 ## 测试
 

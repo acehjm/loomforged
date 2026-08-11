@@ -39,7 +39,6 @@ class WorkStateError(RuntimeError):
 class Goal:
     id: str
     confirmed: bool
-    allow_external_writes: bool
     requirements: tuple["Requirement", ...]
     criteria: tuple["Criterion", ...]
 
@@ -116,7 +115,6 @@ class PolicyContext:
     goal_id: str
     phase: str
     active_task: str
-    allow_external_writes: bool
     task: PolicyTask | None
 
 
@@ -248,7 +246,6 @@ def parse_goal(text: str) -> Goal:
         "agent",
         "goal_id",
         "confirmed",
-        "allow_external_writes",
     }
     missing = sorted(required - metadata.keys())
     if missing:
@@ -274,9 +271,6 @@ def parse_goal(text: str) -> Goal:
     return Goal(
         id=metadata["goal_id"],
         confirmed=_boolean(metadata["confirmed"], field="confirmed"),
-        allow_external_writes=_boolean(
-            metadata["allow_external_writes"], field="allow_external_writes"
-        ),
         requirements=requirements,
         criteria=criteria,
     )
@@ -369,7 +363,7 @@ def load_policy_context(project_root: Path) -> PolicyContext:
     goal_metadata = frontmatter(_read(project_root / GOAL_FILE), "goal.md")
     work_text = _read(project_root / WORK_FILE)
     work_metadata = frontmatter(work_text, "work.md")
-    goal_required = {"agent", "goal_id", "confirmed", "allow_external_writes"}
+    goal_required = {"agent", "goal_id", "confirmed"}
     work_required = {"goal_id", "phase", "active_task"}
     missing_goal = sorted(goal_required - goal_metadata.keys())
     missing_work = sorted(work_required - work_metadata.keys())
@@ -410,10 +404,6 @@ def load_policy_context(project_root: Path) -> PolicyContext:
         goal_id=goal_metadata["goal_id"],
         phase=phase,
         active_task=active_task,
-        allow_external_writes=_boolean(
-            goal_metadata["allow_external_writes"],
-            field="allow_external_writes",
-        ),
         task=task,
     )
 

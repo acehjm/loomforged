@@ -19,7 +19,6 @@ GOAL = """---
 agent: wali-0x3
 goal_id: G-001
 confirmed: true
-allow_external_writes: false
 ---
 
 # Goal
@@ -111,19 +110,28 @@ class WaliLivenessTest(unittest.TestCase):
     def policy(self, payload: dict[str, object], command: str = "hook") -> subprocess.CompletedProcess[str]:
         return self.run_hook(POLICY, payload, command)
 
-    def test_common_local_commands_do_not_require_goal_registration(self) -> None:
-        result = self.policy(
-            {
-                "hook_event_name": "PreToolUse",
-                "tool_name": "Bash",
-                "tool_input": {
-                    "command": "rg -n 'Goal' docs/wali-0x3/goal.md",
-                },
-            }
+    def test_common_git_bash_and_svn_read_commands_do_not_require_registration(self) -> None:
+        commands = (
+            "pwd && rg --files",
+            "ls -la && find . -maxdepth 2 -type f",
+            "awk '{print $1}' input.txt | sort -u",
+            "svn status && svn diff --internal-diff",
+            "svn info && svn log -l 1",
+            "bash -lc 'pwd && rg -n Goal docs/wali-0x3/goal.md'",
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.policy(
+                    {
+                        "hook_event_name": "PreToolUse",
+                        "tool_name": "Bash",
+                        "tool_input": {"command": command},
+                    }
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
 
     def test_missing_control_state_does_not_block_local_diagnostics(self) -> None:
         (self.state / "goal.md").unlink()

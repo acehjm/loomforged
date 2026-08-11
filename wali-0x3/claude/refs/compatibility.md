@@ -16,9 +16,9 @@
 
 1. 将归档中的 `claude/` 复制或改名为目标项目的 `.claude/`。
 2. 运行 `python3 .claude/hooks/wali-doctor.py --project-root .`。
-3. `/hooks` 应显示三类核心 Hook；Read、Glob、Grep 不应匹配 PreToolUse Policy。
+3. `/hooks` 应显示三类核心 Hook；Read、Glob、Grep、Agent、Skill 不应匹配 PreToolUse Policy。
 4. 在 `.claude/hooks/` 运行控制面测试。
 5. 在真实项目检查 `svn info`、`svn status` 和 `svn diff --internal-diff`。
-6. 用一次普通本地测试命令、一次 Scope 内写入、一次 Scope 外拒绝和一次显式 handoff 做冒烟验证。
+6. 用一次普通本地测试命令、一次受信任 Skill 调用、一次 Scope 内写入、一次 Scope 外确认和一次显式 handoff 做冒烟验证。
 
 缺少核心 Hook 时不要假装策略仍受保护；应修复部署或明确在没有 WALI Policy 的模式下继续。
