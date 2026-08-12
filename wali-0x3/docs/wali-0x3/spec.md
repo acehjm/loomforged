@@ -6,7 +6,7 @@ status: draft
 
 # Implementation-Ready Spec
 
-> `spec.md` 把已确认 Goal 编译为 Developer 可以连续执行的稳定实现契约。当前 `draft` 文件只是格式种子；普通 Define 的候选 Spec 留在对话与上下文中，Goal+Spec 经用户明确确认后才与 Work 一次性持久化。进入 work 后 Spec 不记录进度；只有不影响 Goal、用户可观察行为或 AC，且未触发 `Must ask` 的代码事实偏差，才在检查点批量修正。Goal、用户可观察行为或 AC 实质变化必须返回 define 并重新确认。
+> `spec.md` 把已确认 Goal 编译为 Backend/Frontend Dev 可以连续执行的稳定实现契约。当前 `draft` 文件只是格式种子；普通 Define 的候选 Spec 留在对话与上下文中，Goal+Spec 经用户明确确认后才与 Work 一次性持久化。进入 work 后 Spec 不记录进度；只有不影响 Goal、用户可观察行为或 AC，且未触发 `Must ask` 的代码事实偏差，才在检查点批量修正。Goal、用户可观察行为或 AC 实质变化必须返回 define 并重新确认。
 
 以下二级标题、表头和 Autonomous Decision Contract 的四个英文标签是检查器接口，保留原样；正文可使用项目语言。
 

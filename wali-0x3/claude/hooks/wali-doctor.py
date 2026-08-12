@@ -24,7 +24,8 @@ CORE_CONTROL_PATHS = (
     "settings.json",
     "agents/coordinator.md",
     "agents/architect.md",
-    "agents/developer.md",
+    "agents/backend-dev.md",
+    "agents/frontend-dev.md",
     "agents/reviewer.md",
     "agents/tester.md",
     "hooks/wali-doctor.py",
@@ -52,6 +53,9 @@ def _layout(project_root: Path) -> Diagnostic:
     missing = [path for path in paths if not (project_root / path).is_file()]
     if missing:
         return Diagnostic("FAIL", "布局", "缺少：" + ", ".join(missing))
+    legacy = project_root / control / "agents" / "developer.md"
+    if legacy.is_file():
+        return Diagnostic("FAIL", "布局", f"不应保留遗留 Agent：{control}/agents/developer.md")
     return Diagnostic("PASS", "布局", "goal.md + spec.md + work.md 控制面完整")
 
 
@@ -82,14 +86,43 @@ def _settings(project_root: Path) -> Diagnostic:
     pre = hooks.get("PreToolUse")
     post = hooks.get("PostToolUse")
     stop = hooks.get("Stop")
-    if not all(isinstance(value, list) and len(value) == 1 for value in (pre, post, stop)):
-        return Diagnostic("FAIL", "Hook 设置", "Pre/Post/Stop 必须各注册一次")
-    assert isinstance(pre, list) and isinstance(post, list) and isinstance(stop, list)
+    subagent_start = hooks.get("SubagentStart")
+    subagent_stop = hooks.get("SubagentStop")
+    if not all(
+        isinstance(value, list) and len(value) == 1
+        for value in (pre, post, stop, subagent_start, subagent_stop)
+    ):
+        return Diagnostic(
+            "FAIL",
+            "Hook 设置",
+            "Pre/Post/Stop/SubagentStart/SubagentStop 必须各注册一次",
+        )
+    assert all(
+        isinstance(value, list)
+        for value in (pre, post, stop, subagent_start, subagent_stop)
+    )
     pre_entry = pre[0]
     post_entry = post[0]
     stop_entry = stop[0]
-    if not all(isinstance(value, dict) for value in (pre_entry, post_entry, stop_entry)):
+    subagent_start_entry = subagent_start[0]
+    subagent_stop_entry = subagent_stop[0]
+    if not all(
+        isinstance(value, dict)
+        for value in (
+            pre_entry,
+            post_entry,
+            stop_entry,
+            subagent_start_entry,
+            subagent_stop_entry,
+        )
+    ):
         return Diagnostic("FAIL", "Hook 设置", "Hook 条目格式无效")
+    expected_agents = "backend-dev|frontend-dev"
+    if (
+        subagent_start_entry.get("matcher") != expected_agents
+        or subagent_stop_entry.get("matcher") != expected_agents
+    ):
+        return Diagnostic("FAIL", "Hook 设置", "实现 Agent 生命周期 matcher 无效")
     pre_tools = {tool for tool in str(pre_entry.get("matcher", "")).split("|") if tool}
     post_tools = {tool for tool in str(post_entry.get("matcher", "")).split("|") if tool}
     expected_pre = {"Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"}
@@ -102,6 +135,8 @@ def _settings(project_root: Path) -> Diagnostic:
         (pre_entry, "wali_policy.py", "hook"),
         (post_entry, "wali_policy.py", "post-hook"),
         (stop_entry, "wali_stop.py", "--hook"),
+        (subagent_start_entry, "wali_work.py", "claim-hook"),
+        (subagent_stop_entry, "wali_work.py", "release-hook"),
     )
     for entry, script, argument in expected:
         command, arguments = _hook_command(entry)

@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import itertools
+import json
+import os
 import re
 import sys
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +34,9 @@ ACCEPTANCE_STATES = {"pending", "verified"}
 ISSUE_STATES = {"open", "fixing", "verify", "closed"}
 ISSUE_SEVERITIES = {"blocker", "high", "medium", "low"}
 SPEC_STATES = {"draft", "implementation-ready"}
+IMPLEMENTATION_AGENT_TYPES = {"backend-dev", "frontend-dev"}
+TASK_OWNER_TYPES = IMPLEMENTATION_AGENT_TYPES | {"coordinator"}
+MAX_ACTIVE_IMPLEMENTATION_TASKS = 2
 PLACEHOLDERS = {"", "-", "—", "none", "n/a", "pending", "待补充", "待验证", "待分配"}
 
 
@@ -151,12 +158,17 @@ class WorkState:
     tasks: tuple[Task, ...]
     issues: tuple[Issue, ...]
 
+    @property
+    def active_tasks(self) -> tuple[str, ...]:
+        return _active_task_ids(self.active_task)
+
 
 @dataclass(frozen=True)
 class PolicyTask:
     id: str
     status: str
     scopes: tuple[str, ...]
+    owner: str
 
 
 @dataclass(frozen=True)
@@ -164,7 +176,13 @@ class PolicyContext:
     goal_id: str
     phase: str
     active_task: str
-    task: PolicyTask | None
+    tasks: tuple[PolicyTask, ...]
+
+    @property
+    def task(self) -> PolicyTask | None:
+        """Preserve the single-task interface for main-thread execution."""
+
+        return self.tasks[0] if len(self.tasks) == 1 else None
 
 
 def _read(path: Path) -> str:
@@ -288,6 +306,24 @@ def _labelled_bullet(text: str, label: str) -> str:
 
 def _references(value: str, prefix: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(re.findall(rf"\b{re.escape(prefix)}-\d+\b", value.upper())))
+
+
+def _active_task_ids(value: str) -> tuple[str, ...]:
+    normalized = value.strip()
+    if normalized.lower() == "none":
+        return ()
+    parts = tuple(part.strip().upper() for part in normalized.split(","))
+    if (
+        not parts
+        or any(not re.fullmatch(r"T-\d+", part) for part in parts)
+        or len(set(parts)) != len(parts)
+    ):
+        return ()
+    return parts
+
+
+def _valid_active_task(value: str) -> bool:
+    return value.strip().lower() == "none" or bool(_active_task_ids(value))
 
 
 def _scopes(value: str) -> tuple[str, ...]:
@@ -552,30 +588,169 @@ def load_policy_context(project_root: Path) -> PolicyContext:
     if phase != "define" and not confirmed:
         raise WorkStateError(f"{phase} phase 要求 confirmed=true")
     active_task = work_metadata["active_task"]
+    active_task_ids = _active_task_ids(active_task)
+    if not _valid_active_task(active_task):
+        raise WorkStateError("work.md 的 active_task 必须是 none 或 T-XXX 列表")
     task_rows = [
         row
         for row in table(work_text, "## Tasks", "work.md")
-        if row.get("ID", "").strip() == active_task
+        if row.get("ID", "").strip() in active_task_ids
     ]
-    if len(task_rows) > 1:
-        raise WorkStateError(f"active_task ID 重复：{active_task}")
-    task = None
-    if task_rows:
-        row = task_rows[0]
+    if len(task_rows) != len(active_task_ids):
+        raise WorkStateError("active_task 必须只引用真实且唯一的 Task")
+    tasks: list[PolicyTask] = []
+    for row in task_rows:
         scopes = _scopes(row.get("Scope", ""))
         if not scopes or any(not _scope_prefix(scope) for scope in scopes):
-            raise WorkStateError(f"{active_task} 缺少明确 Scope")
-        task = PolicyTask(
-            id=active_task,
-            status=row.get("Status", "").strip().lower(),
-            scopes=scopes,
+            raise WorkStateError(f"{row.get('ID', '').strip()} 缺少明确 Scope")
+        tasks.append(
+            PolicyTask(
+                id=row.get("ID", "").strip(),
+                status=row.get("Status", "").strip().lower(),
+                scopes=scopes,
+                owner=row.get("Owner", "").strip().lower(),
+            )
         )
     return PolicyContext(
         goal_id=goal_metadata["goal_id"],
         phase=phase,
         active_task=active_task,
-        task=task,
+        tasks=tuple(tasks),
     )
+
+
+def _claim_directory(project_root: Path, session_id: str) -> Path:
+    session_key = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+    return _claim_project_directory(project_root) / session_key
+
+
+def _claim_project_directory(project_root: Path) -> Path:
+    project_key = hashlib.sha256(str(project_root.resolve()).encode("utf-8")).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / "wali-0x3-claims" / project_key
+
+
+def _read_claim(path: Path) -> dict[str, str]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {str(key): str(item) for key, item in value.items()} if isinstance(value, dict) else {}
+
+
+def claim_agent_task(
+    project_root: Path,
+    *,
+    session_id: str,
+    agent_id: str,
+    agent_type: str,
+) -> Task | None:
+    """Atomically claim one matching active Task without mutating work.md."""
+
+    if agent_type not in IMPLEMENTATION_AGENT_TYPES or not session_id or not agent_id:
+        return None
+    state = load_state(project_root)
+    if checkpoint_reasons(state, "work"):
+        return None
+    active_ids = set(state.active_tasks)
+    candidates = sorted(
+        (
+            task
+            for task in state.tasks
+            if task.id in active_ids
+            and task.status == "working"
+            and task.owner == agent_type
+        ),
+        key=lambda item: item.id,
+    )
+    directory = _claim_directory(project_root, session_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    for path in directory.glob("T-*.json"):
+        claim = _read_claim(path)
+        if claim.get("agent_id") == agent_id:
+            return next((task for task in candidates if task.id == claim.get("task_id")), None)
+    for task in candidates:
+        path = directory / f"{task.id}.json"
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            continue
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(
+                {
+                    "goal_id": state.goal.id,
+                    "task_id": task.id,
+                    "agent_id": agent_id,
+                    "agent_type": agent_type,
+                },
+                stream,
+                ensure_ascii=False,
+            )
+        return task
+    return None
+
+
+def claimed_policy_task(
+    project_root: Path,
+    context: PolicyContext,
+    *,
+    session_id: str,
+    agent_id: str,
+    agent_type: str,
+) -> PolicyTask | None:
+    if not session_id or not agent_id or agent_type not in IMPLEMENTATION_AGENT_TYPES:
+        return None
+    path = _claim_directory(project_root, session_id)
+    for claim_path in path.glob("T-*.json"):
+        claim = _read_claim(claim_path)
+        if (
+            claim.get("agent_id") == agent_id
+            and claim.get("agent_type") == agent_type
+            and claim.get("goal_id") == context.goal_id
+        ):
+            return next(
+                (
+                    task
+                    for task in context.tasks
+                    if task.id == claim.get("task_id") and task.owner == agent_type
+                ),
+                None,
+            )
+    return None
+
+
+def release_agent_task(project_root: Path, *, session_id: str, agent_id: str) -> None:
+    if not session_id or not agent_id:
+        return
+    directory = _claim_directory(project_root, session_id)
+    for path in directory.glob("T-*.json"):
+        if _read_claim(path).get("agent_id") == agent_id:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def clear_agent_claims(project_root: Path) -> int:
+    """Clear stale claims after all implementation agents have stopped."""
+
+    project_directory = _claim_project_directory(project_root)
+    removed = 0
+    for path in project_directory.glob("*/T-*.json"):
+        try:
+            path.unlink()
+            removed += 1
+        except FileNotFoundError:
+            pass
+    for directory in project_directory.glob("*"):
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+    try:
+        project_directory.rmdir()
+    except OSError:
+        pass
+    return removed
 
 
 def _duplicates(values: list[str]) -> tuple[str, ...]:
@@ -733,6 +908,15 @@ def validate_state(state: WorkState) -> list[str]:
     requirement_ids = {requirement.id for requirement in goal.requirements}
     task_ids = {task.id for task in state.tasks}
     acceptance_ids = {acceptance.id for acceptance in state.acceptances}
+    active_task_ids = state.active_tasks
+    active_task_set = set(active_task_ids)
+    if not _valid_active_task(state.active_task):
+        reasons.append("active_task 必须是 none 或 T-XXX 列表")
+    if len(active_task_ids) > MAX_ACTIVE_IMPLEMENTATION_TASKS:
+        reasons.append("默认运行时最多两个 active Task")
+    for active_task_id in active_task_ids:
+        if active_task_id not in task_ids:
+            reasons.append(f"active_task 引用不存在的 {active_task_id}")
     if spec.status == "implementation-ready":
         scenario_names = [scenario.name for scenario in spec.scenarios]
         for name in _duplicates(scenario_names):
@@ -809,12 +993,10 @@ def validate_state(state: WorkState) -> list[str]:
             reasons.append(f"{acceptance_id} 没有 Verification Mapping")
         for acceptance_id in sorted(criterion_ids - preserved_oracles):
             reasons.append(f"{acceptance_id} 的 Verification Mapping 未保留 AC oracle")
-    if state.phase in {"work", "verify"} and state.active_task not in task_ids:
-        reasons.append(f"{state.phase} phase 的 active_task 必须引用真实 Task")
-    if state.phase in {"define", "done"} and state.active_task != "none":
+    if state.phase == "verify" and not active_task_ids:
+        reasons.append("verify phase 的 active_task 必须至少引用一个真实 Task")
+    if state.phase in {"define", "done"} and active_task_ids:
         reasons.append(f"{state.phase} phase 的 active_task 必须是 none")
-    if state.phase == "paused" and state.active_task != "none" and state.active_task not in task_ids:
-        reasons.append("paused phase 的 active_task 必须是 none 或真实 Task")
     for requirement in goal.requirements:
         if not re.fullmatch(r"R-\d+", requirement.id):
             reasons.append(f"Requirement ID 格式无效：{requirement.id or '空'}")
@@ -863,8 +1045,12 @@ def validate_state(state: WorkState) -> list[str]:
                 reasons.append(f"{task.id} 依赖不存在的 {dependency_id}")
         if not task.scopes or any(not _scope_prefix(scope) for scope in task.scopes):
             reasons.append(f"{task.id} 缺少明确 Scope")
-        if not task.title or task.owner in PLACEHOLDERS:
-            reasons.append(f"{task.id} 缺少任务描述或 Owner")
+        if not task.title:
+            reasons.append(f"{task.id} 缺少任务描述")
+        if task.owner not in TASK_OWNER_TYPES:
+            reasons.append(
+                f"{task.id} Owner 必须是 backend-dev、frontend-dev 或 coordinator"
+            )
         if task.status == "done":
             if not _has_evidence(task.evidence):
                 reasons.append(f"{task.id} 已 done，但缺少 Evidence")
@@ -964,13 +1150,32 @@ def validate_state(state: WorkState) -> list[str]:
             reasons.append("Task 依赖存在环：" + " → ".join(cycle))
             break
     working = [task for task in state.tasks if task.status == "working"]
-    if len(working) > 1:
-        reasons.append("默认运行时只允许一个 working Task")
-    if working and working[0].id != state.active_task:
-        reasons.append("working Task 必须与 active_task 一致")
-    for left, right in itertools.combinations(working, 2):
+    if len(working) > MAX_ACTIVE_IMPLEMENTATION_TASKS:
+        reasons.append("默认运行时最多两个 working Task")
+    for task in working:
+        if task.id not in active_task_set:
+            reasons.append(f"working Task {task.id} 必须列入 active_task")
+        incomplete_dependencies = [
+            dependency_id
+            for dependency_id in task.dependencies
+            if not any(
+                candidate.id == dependency_id and candidate.status == "done"
+                for candidate in state.tasks
+            )
+        ]
+        if incomplete_dependencies:
+            reasons.append(
+                f"working Task {task.id} 的依赖尚未 done：{', '.join(incomplete_dependencies)}"
+            )
+    active_tasks = [task for task in state.tasks if task.id in active_task_set]
+    for task in active_tasks:
+        if state.phase == "work" and task.status not in {"working", "review"}:
+            reasons.append(f"work phase 的 active Task {task.id} 必须是 working 或 review")
+        if state.phase == "verify" and task.status != "review":
+            reasons.append(f"verify phase 的 active Task {task.id} 必须是 review")
+    for left, right in itertools.combinations(active_tasks, 2):
         if scopes_overlap(left.scopes, right.scopes):
-            reasons.append(f"working Task {left.id} 与 {right.id} 的 Scope 重叠")
+            reasons.append(f"active Task {left.id} 与 {right.id} 的 Scope 重叠")
     return list(dict.fromkeys(reasons))
 
 
@@ -1012,15 +1217,15 @@ def checkpoint_reasons(state: WorkState, checkpoint: str) -> list[str]:
             reasons.append("进入 work 前必须确认 Goal")
         if not state.tasks:
             reasons.append("进入 work 前至少需要一个 Task")
+        if not state.active_tasks:
+            reasons.append("进入 work 前 active_task 至少需要一个 working Task")
     elif checkpoint == "verify":
-        active = next(
-            (task for task in state.tasks if task.id == state.active_task),
-            None,
-        )
-        if active is None or active.status != "review":
-            reasons.append("进入 verify 前 active_task 必须处于 review")
-        elif not _has_evidence(active.evidence):
-            reasons.append("进入 verify 前 active_task 必须记录实现证据")
+        active = [task for task in state.tasks if task.id in set(state.active_tasks)]
+        if not active or any(task.status != "review" for task in active):
+            reasons.append("进入 verify 前所有 active_task 必须处于 review")
+        for task in active:
+            if not _has_evidence(task.evidence):
+                reasons.append(f"进入 verify 前 {task.id} 必须记录实现证据")
     elif checkpoint == "done":
         for task in state.tasks:
             if task.status != "done":
@@ -1055,6 +1260,77 @@ def _run_check(project_root: Path, checkpoint: str | None) -> int:
     return 0
 
 
+def _lifecycle_payload() -> dict[str, str]:
+    value = json.load(sys.stdin)
+    if not isinstance(value, dict):
+        raise ValueError("Hook 输入必须是对象")
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _run_claim_hook(project_root: Path) -> int:
+    try:
+        payload = _lifecycle_payload()
+        agent_type = payload.get("agent_type", "")
+        if agent_type not in IMPLEMENTATION_AGENT_TYPES:
+            return 0
+        task = claim_agent_task(
+            project_root,
+            session_id=payload.get("session_id", ""),
+            agent_id=payload.get("agent_id", ""),
+            agent_type=agent_type,
+        )
+        if task is None:
+            context = (
+                "WALI 未分配 active Task。不要修改实现或治理文件；"
+                "返回 Coordinator 说明未找到可认领任务。"
+            )
+        else:
+            context = (
+                f"WALI 已为你原子认领 {task.id}（{task.title}）。"
+                f"只修改 Scope: {', '.join(task.scopes)}。"
+                "不修改 goal.md、spec.md、work.md 或 handoff.md，"
+                "不执行 SVN add/delete/move/commit。"
+                "完成后返回 Task ID、修改路径、测试命令/结果、Evidence、阻塞项和 ready_for_review。"
+            )
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "SubagentStart",
+                        "additionalContext": context,
+                    }
+                },
+                ensure_ascii=False,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError, WorkStateError) as error:
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "SubagentStart",
+                        "additionalContext": f"WALI 任务认领失败：{error}。不要写入任何文件。",
+                    }
+                },
+                ensure_ascii=False,
+            )
+        )
+    return 0
+
+
+def _run_release_hook(project_root: Path) -> int:
+    try:
+        payload = _lifecycle_payload()
+        release_agent_task(
+            project_root,
+            session_id=payload.get("session_id", ""),
+            agent_id=payload.get("agent_id", ""),
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
@@ -1063,10 +1339,20 @@ def main() -> int:
     check_parser.add_argument("--checkpoint", choices=("work", "verify", "done"))
     subparsers.add_parser("frontier")
     subparsers.add_parser("parallel")
+    subparsers.add_parser("claim-hook")
+    subparsers.add_parser("release-hook")
+    subparsers.add_parser("clear-claims")
     args = parser.parse_args()
     root = args.project_root.resolve()
     if args.command == "check":
         return _run_check(root, args.checkpoint)
+    if args.command == "claim-hook":
+        return _run_claim_hook(root)
+    if args.command == "release-hook":
+        return _run_release_hook(root)
+    if args.command == "clear-claims":
+        print(f"已清理 {clear_agent_claims(root)} 个临时 Task claim")
+        return 0
     try:
         state = load_state(root)
         reasons = validate_state(state)

@@ -119,7 +119,7 @@ updated: 2026-08-11T12:00:00+08:00
 
 | ID | Acceptance | Task | Status | Depends On | Scope | Evidence | Owner | Verifier |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | developer | none |
+| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |
 
 ## Issues
 
@@ -271,8 +271,8 @@ class WaliLivenessTest(unittest.TestCase):
                 "tool_name": "Edit",
                 "tool_input": {
                     "file_path": str(work_path),
-                    "old_string": "| none | developer | none |",
-                    "new_string": "| test exit 0 | developer | tester |",
+                    "old_string": "| none | backend-dev | none |",
+                    "new_string": "| test exit 0 | backend-dev | tester |",
                 },
             }
         )

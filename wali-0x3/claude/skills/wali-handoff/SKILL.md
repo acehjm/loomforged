@@ -16,7 +16,7 @@ disable-model-invocation: true
 ---
 goal_id: G-XXX
 phase: work
-active_task: T-XXX
+active_task: T-XXX, T-YYY
 updated: <ISO 时间>
 ---
 
@@ -31,6 +31,8 @@ updated: <ISO 时间>
 - 一个具体、可执行的下一步。
 ```
 
-4. handoff 不复制完整 Goal/Spec/Work，不写摘要哈希，不追加进度历史。
+有两个 active Task 时用逗号分隔；没有时写 `none`。
+
+4. handoff 不复制完整 Goal/Spec/Work，不写摘要哈希，不追加进度历史，不持久化临时 Agent claim；恢复时按 active Task 重新认领。
 5. 最后把 `work.md` 的 `stop_intent` 设为 `handoff`，运行 `wali_stop.py --project-root .`。
 6. 在对话中输出同一份精简交接。恢复后由 `/wali-resume` 将 `stop_intent` 改回 `continue`。

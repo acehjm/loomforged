@@ -7,4 +7,4 @@
 | Ref ID | 路径 | 类型 | 适用场景 | 最近核对 |
 | --- | --- | --- | --- | --- |
 
-Developer 只在当前 Task 场景匹配时读取最小相关模板。模板不替代 Goal、项目代码事实或 Acceptance Method；项目需要偏离时，把选择与依据写入项目资料和 `goal.md`。
+实现 Agent 只在当前 Task 场景匹配时读取最小相关模板。模板不替代 Goal、项目代码事实或 Acceptance Method；项目需要偏离时，把选择与依据返回 Coordinator，由 Coordinator 判断是否需要更新项目资料或稳定契约。

@@ -81,11 +81,12 @@ outcome: none
 
 1. 为 Goal 分配稳定 `G-XXX` ID；在同一写入回合同步持久化 Goal、Spec、Work，将 `confirmed` 设为 `true`、Spec status 设为 `implementation-ready`。
 2. 在 `work.md` 为每个 AC 建立运行状态。
-3. 从 Design/Verification Mapping 生成产生可观察结果所需的最少 Task。每项 Task 包含关联 AC、状态、依赖、精确 Scope、Owner、Evidence 和 Verifier。
-4. 单任务不需要额外依赖设计；多任务才使用 `frontier`/`parallel` 检查。
-5. 选择一个可执行 Task，将它设为 `working`，把 Work 的 `phase` 改为 `work`、`active_task` 改为该 ID。
-6. 运行 `python3 .claude/hooks/wali_work.py check --checkpoint work`，同时验证 Spec 与活动 Task。
-7. 立即继续实现，不因为“规格已确认”而停下来等待下一条用户消息。
+3. 从 Design/Verification Mapping 生成产生可观察结果所需的最少 Task。每项 Task 包含关联 AC、状态、依赖、精确 Scope、Owner、Evidence 和 Verifier；前端 Task 用 `frontend-dev`，后端 Task 用 `backend-dev`，串行集成可用 `coordinator`。
+4. 单任务不需要额外依赖设计。多任务先用 `frontier`/`parallel` 检查；只有无依赖、Scope 互斥且工作量足够的两项才并发。共享配置、lockfile、路由总表、生成代码和数据库迁移只能归一项，或拆为后续 integration Task。
+5. 选择一个可执行 Task，或一对安全并发 Task；将它们设为 `working`，把 Work 的 `phase` 改为 `work`，并用逗号将一至两个 ID 写入 `active_task`。
+6. 运行 `python3 .claude/hooks/wali_work.py check --checkpoint work`，同时验证 Spec、依赖、Scope 互斥与活动 Task。
+7. 一个 Task 由主会话或对应实现 Agent 执行；两个 Task 在同一轮同时调用两个 `backend-dev`/`frontend-dev` 实例。子 Agent 不写治理文件或执行 SVN 调度，Coordinator 在两者结束后一次批量写回 Work。
+8. 立即继续实现，不因为“规格已确认”而停下来等待下一条用户消息。
 
 # 自主执行纪律
 

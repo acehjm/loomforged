@@ -14,6 +14,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("wali-doctor.py")
 PROJECT_ROOT = SCRIPT.parents[2]
 START_SKILL = PROJECT_ROOT / "claude" / "skills" / "wali-start" / "SKILL.md"
+COORDINATOR = PROJECT_ROOT / "claude" / "agents" / "coordinator.md"
 
 
 class WaliDoctorLightTest(unittest.TestCase):
@@ -41,6 +42,38 @@ class WaliDoctorLightTest(unittest.TestCase):
         self.assertIn("Behavior Scenarios", skill)
         self.assertIn("不发布到 Issue Tracker", skill)
 
+    def test_deployment_defines_frontend_and_backend_workers_with_one_work_writer(self) -> None:
+        backend = (PROJECT_ROOT / "claude" / "agents" / "backend-dev.md").read_text(encoding="utf-8")
+        frontend = (PROJECT_ROOT / "claude" / "agents" / "frontend-dev.md").read_text(encoding="utf-8")
+        reviewer = (PROJECT_ROOT / "claude" / "agents" / "reviewer.md").read_text(encoding="utf-8")
+        tester = (PROJECT_ROOT / "claude" / "agents" / "tester.md").read_text(encoding="utf-8")
+        coordinator = COORDINATOR.read_text(encoding="utf-8")
+
+        self.assertFalse((PROJECT_ROOT / "claude" / "agents" / "developer.md").exists())
+        self.assertIn("name: backend-dev", backend)
+        self.assertIn("name: frontend-dev", frontend)
+        self.assertIn("不自行更新 Work", backend)
+        self.assertIn("不自行更新 Work", frontend)
+        self.assertIn("tools: Read, Glob", reviewer)
+        self.assertIn("tools: Read, Glob", tester)
+        self.assertIn("不修改", reviewer)
+        self.assertIn("不修改", tester)
+        self.assertIn("backend-dev", coordinator)
+        self.assertIn("frontend-dev", coordinator)
+        self.assertIn("最多两个", coordinator)
+
+    def test_doctor_rejects_the_legacy_developer_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            shutil.copytree(PROJECT_ROOT, project)
+            legacy = project / "claude" / "agents" / "developer.md"
+            legacy.write_text("---\nname: developer\n---\n", encoding="utf-8")
+
+            result = self.run_doctor(project)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("developer.md", result.stdout)
+
     def test_doctor_rejects_incomplete_hook_matchers_and_layout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory) / "project"
@@ -49,6 +82,7 @@ class WaliDoctorLightTest(unittest.TestCase):
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
             settings["hooks"]["PreToolUse"][0]["matcher"] = "Bash"
             settings["hooks"]["PostToolUse"][0]["matcher"] = "Write"
+            settings["hooks"].pop("SubagentStart")
             settings_path.write_text(json.dumps(settings), encoding="utf-8")
             (project / "claude" / "agents" / "architect.md").unlink()
 

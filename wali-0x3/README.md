@@ -11,7 +11,7 @@
 WALI 只保留会直接提高交付可信度的治理：
 
 - 开工前确认目标、范围和验收方法。
-- active Task Scope 内的实现写入直接通过，例外写入当场确认。
+- 已认领 active Task Scope 内的实现写入直接通过，例外写入当场确认。
 - 实现者自检与独立验证分离。
 - 外部写入需要当场确认，不要求先改状态文件申请授权。
 - 真正交接时留下最小恢复游标。
@@ -22,7 +22,7 @@ WALI 只保留会直接提高交付可信度的治理：
 - 每次停止都生成 handoff 摘要。
 - 把普通本地命令登记成完整字符串白名单。
 - 为单任务强制建立“图工程”。
-- 默认启用 Agent Teams 生命周期监督。
+- 启用 Agent Teams、心跳或 idle 生命周期监督。
 - 用 PostHook 把状态锁进不可修复的失败模式。
 
 ## 三份常驻状态
@@ -55,12 +55,12 @@ Define 时的 Goal+Spec 候选包先留在对话与上下文中。除非用户�
 
 可变执行状态，包含：
 
-- phase、active Task、等待原因、停止意图和最终 outcome。
+- phase、一至两个 active Task、等待原因、停止意图和最终 outcome。
 - 每个 AC 的状态、Evidence 和 Verifier。
 - Task 的 AC、状态、依赖、Scope、Owner、Evidence 和 Verifier。
 - Issue 的关联、严重程度、状态、描述和 Evidence。
 
-不再维护 Todo、Issues、第二份 Spec 或进度文件；运行信息只保留在 Work。
+`active_task` 可为 `none`、一个 Task ID，或两个逗号分隔的 Task ID。两个 active Task 必须依赖已满足且 Scope 互斥；不再维护 Todo、Issues、第二份 Spec 或进度文件，运行信息只保留在 Work。
 
 ### `handoff.md`
 
@@ -71,7 +71,7 @@ Define 时的 Goal+Spec 候选包先留在对话与上下文中。除非用户�
 ```text
 define：在对话中综合并确认 Goal + Spec，确认后一次持久化
    ↓
-work：实现一个 working Task
+work：实现一至两个 working Task
    ↓
 verify：独立审查、测试和问题闭环
    ├─ 需要修复 ─→ work
@@ -89,6 +89,7 @@ WALI 会从 Goal、Spec 和 Work 派生一个临时 WorkIndex，用于：
 - 检查重复 ID、不存在的引用和 Task 依赖环。
 - 计算当前 frontier。
 - 在多任务场景判断 Scope 是否互斥。
+- 为最多两个实现 Agent 选择依赖已满足的安全并发候选。
 
 WorkIndex 是实现细节，不创建图数据库、图文件或 Mermaid 副本。单任务通常只需要 `check`，无需运行 frontier/parallel。
 
@@ -109,7 +110,7 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 ```
 
 - 进入 work：Goal 已确认、Spec implementation-ready、没有 Open Questions，每个 AC 有 Behavior Scenario 和可定位测试 Seam，Requirement/AC 映射完整且至少有一个 Task。
-- 进入 verify：active Task 已 review 并有实现 Evidence。
+- 进入 verify：所有 active Task 已 review 并有实现 Evidence。
 - 进入 done：所有 Task 和 AC 已完成，没有未关闭 blocker。
 
 ## Hook 行为
@@ -120,13 +121,21 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 
 Policy 是软门禁：
 
-- 普通命令和 active Task Scope 内写入直接 `allow`。
+- 普通命令和已认领 active Task Scope 内写入直接 `allow`。
 - 外部写入、控制面修改、Scope 外写入、非 work 阶段写入和可恢复的高风险本地操作返回 `ask`。
-- 只有可能删除项目根、主目录或系统根的灾难性操作返回 `deny`。
+- 可能删除项目根、主目录或系统根的灾难性操作，以及实现 Subagent 执行破坏性工作区命令或越过认领、Scope、控制面、SVN 调度边界时返回 `deny`。这些拒绝都指向 Coordinator，不阻断主会话修复。
 
 工作区内普通读取、搜索、测试、构建和检查命令无需预先登记。
 
-Scope 对 Write/Edit 等原生写入工具是默认边界；Bash 还识别重定向、`touch/rm/mv/cp/tee/sed -i` 等显式文件变更并应用相同分级。超出边界时由用户当场决定，而不是为了例外先重写 Goal/Work。Hook 无法从任意测试或构建程序内部可靠推断隐藏副作用，因此它不是操作系统沙箱；需要强隔离的并发或不可信脚本应使用独立工作区/沙箱。
+Scope 对 Write/Edit 等原生写入工具是默认边界；Bash 还识别重定向、`touch/rm/mv/cp/tee/sed -i` 等显式文件变更并应用相同分级。实现 Subagent 必须同时匹配 `agent_id + agent_type` 的 Task 认领，只能写该 Task Scope。超出边界时由用户当场决定，而不是为了例外先重写 Goal/Work。Hook 无法从任意测试或构建程序内部可靠推断隐藏副作用，因此它不是操作系统沙箱；不可信脚本仍应使用独立工作区/沙箱。
+
+### SubagentStart / SubagentStop
+
+最多两个实现 Agent 并发。`SubagentStart` 根据 `session_id + agent_id + agent_type`，通过系统临时目录中的逐 Task `O_EXCL` 文件原子认领一个 Owner 匹配的 active Task；每次工具调用还会复核当前 Owner。`SubagentStop` 释放认领。认领不写仓库、不改 Work、没有轮询心跳，也不持有长期进程锁。两个同类型 Agent 也可以各认领一个 Scope 互斥的 Task。
+
+若 Agent 异常退出且 Stop Hook 未执行，Coordinator 等其他实现 Agent 全部结束后运行 `python3 .claude/hooks/wali_work.py clear-claims`，再重新分派。该命令只清理系统临时目录中的本项目 claim；有实现 Agent 仍在运行时不得调用。
+
+Coordinator 是 Goal/Spec/Work/Handoff 的唯一写入者。Backend/Frontend Dev、Reviewer 和 Tester 只返回结构化结果；Coordinator 核对路径与真实差异后，一次批量写 Work，并串行执行必要的 SVN add/delete/move/commit。共享配置、lockfile、路由总表、生成代码和数据库迁移必须归一个 Task，或拆成后续串行 integration Task。
 
 ### 外部 Skill
 
@@ -151,19 +160,20 @@ PostHook 只在治理状态写入后检查 Goal/Spec/Work 是否完整。发现�
 
 - `rm -rf`、`git reset --hard`、强制 `git clean`、`svn revert`，以及带删除未版本化/忽略项参数的 `svn cleanup` 等可恢复高风险命令会请求确认。普通 `svn cleanup` 直接可用。
 - Git/SVN 推送或提交、上传、发布、集群修改等外部写入。
-- 本地 SVN 调度超出 active Task Scope 的路径。
+- Coordinator 的本地 SVN 调度超出 active Task Scope 的路径；实现 Agent 的 SVN 调度一律交回 Coordinator。
 
 外部写入直接返回 `ask`，由用户当场核对目标与影响；不再为了获得许可修改 Goal。
 
 ## 角色
 
-- Coordinator：维护 Goal/Spec/Work；一次确认后连续推进检查点和 Task。
-- Developer：依据 implementation-ready Spec 自主实现一个 Scope 明确的 Task。
-- Reviewer：在 verify 中独立审查并记录 Issues。
-- Tester：在 verify 中按 AC Method 独立验证。
+- Coordinator：唯一维护 Goal/Spec/Work/Handoff；一次确认后连续编排检查点、Task 与串行 SVN 集成。
+- Backend Dev：依据 implementation-ready Spec 实现已认领的后端 Task，返回路径、自检和 Evidence。
+- Frontend Dev：依据已确认的接口 Seam 实现已认领的 UI/交互 Task，返回路径、自检和 Evidence。
+- Reviewer：在 verify 中独立审查，向 Coordinator 返回建议 Issues。
+- Tester：在 verify 中按 AC Method 独立验证，向 Coordinator 返回 Evidence。
 - Architect：只在高代价架构选择会改变 Goal 时做只读比较。
 
-主会话能稳定完成时不增加 Agent。需要独立上下文时使用普通 Subagent；默认设置不启用 Agent Teams 或生命周期监督 Hooks。
+主会话能稳定完成时不增加 Agent。存在两个无依赖、Scope 互斥且工作量值得并发的 Task 时，Coordinator 可同时启动前端+后端，或两个同类型实现 Agent。默认设置不启用 Agent Teams、心跳或 idle 监督；只用轻量 Subagent 启停 Hook 做 Task 认领与释放。
 
 ## 最小交互原则
 
@@ -211,7 +221,7 @@ python3 .claude/hooks/wali-doctor.py --project-root .
 ```
 
 4. 在真实 SVN 工作副本检查 `svn info`、`svn status` 和 `svn diff --internal-diff`。
-5. 做五个冒烟测试：普通本地命令、Skill 调用、Scope 内写入、Scope 外确认、显式 handoff。
+5. 做六个冒烟测试：普通本地命令、Skill 调用、两个 Agent 原子认领不同 Scope、各自 Scope 内写入、交叉 Scope 确认、显式 handoff。
 
 ## 测试
 

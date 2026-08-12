@@ -13,6 +13,7 @@ from test_wali_liveness import GOAL, SPEC, WORK
 
 
 SCRIPT = Path(__file__).with_name("wali_policy.py")
+WORK_SCRIPT = Path(__file__).with_name("wali_work.py")
 SETTINGS = SCRIPT.parents[1] / "settings.json"
 
 
@@ -27,9 +28,26 @@ class WaliPolicyLightTest(unittest.TestCase):
         (self.state / "work.md").write_text(WORK, encoding="utf-8")
 
     def tearDown(self) -> None:
+        subprocess.run(
+            [
+                sys.executable,
+                str(WORK_SCRIPT),
+                "--project-root",
+                str(self.root),
+                "clear-claims",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
         self.temporary_directory.cleanup()
 
-    def hook(self, tool_name: str, tool_input: dict[str, object]) -> str:
+    def hook(
+        self,
+        tool_name: str,
+        tool_input: dict[str, object],
+        **identity: str,
+    ) -> str:
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--project-root", str(self.root), "hook"],
             input=json.dumps(
@@ -37,6 +55,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                     "hook_event_name": "PreToolUse",
                     "tool_name": tool_name,
                     "tool_input": tool_input,
+                    **identity,
                 },
                 ensure_ascii=False,
             ),
@@ -47,12 +66,72 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
-    def decision(self, tool_name: str, tool_input: dict[str, object]) -> dict[str, str]:
-        output = json.loads(self.hook(tool_name, tool_input))["hookSpecificOutput"]
+    def decision(
+        self,
+        tool_name: str,
+        tool_input: dict[str, object],
+        **identity: str,
+    ) -> dict[str, str]:
+        output = json.loads(self.hook(tool_name, tool_input, **identity))["hookSpecificOutput"]
         return {
             "decision": output["permissionDecision"],
             "reason": output["permissionDecisionReason"],
         }
+
+    def lifecycle(self, command: str, agent_id: str, agent_type: str) -> dict[str, object]:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORK_SCRIPT),
+                "--project-root",
+                str(self.root),
+                command,
+            ],
+            input=json.dumps(
+                {
+                    "hook_event_name": "SubagentStart" if command == "claim-hook" else "SubagentStop",
+                    "session_id": "session-test",
+                    "agent_id": agent_id,
+                    "agent_type": agent_type,
+                }
+            ),
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout) if result.stdout else {}
+
+    def clear_claims(self) -> str:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORK_SCRIPT),
+                "--project-root",
+                str(self.root),
+                "clear-claims",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def write_parallel_state(self, *, same_role: bool = False) -> None:
+        spec = SPEC.replace(
+            "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | `src/feature/**` |",
+            "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | "
+            "`src/backend/**`, `src/frontend/**` |",
+        )
+        second_owner = "backend-dev" if same_role else "frontend-dev"
+        work = WORK.replace("active_task: T-001", "active_task: T-001, T-002").replace(
+            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |",
+            "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | backend-dev | none |\n"
+            f"| T-002 | AC-001 | 实现前端 | working | none | `src/frontend/**` | none | {second_owner} | none |",
+        )
+        (self.state / "spec.md").write_text(spec, encoding="utf-8")
+        (self.state / "work.md").write_text(work, encoding="utf-8")
 
     def test_implementation_writes_allow_active_scope_and_ask_outside_it(self) -> None:
         allowed = self.hook("Write", {"file_path": str(self.root / "src/feature/new.py"), "content": ""})
@@ -74,6 +153,186 @@ class WaliPolicyLightTest(unittest.TestCase):
             self.hook("Write", {"file_path": str(self.root / "src/feature/next.py"), "content": ""}),
             "",
         )
+
+    def test_parallel_subagents_claim_distinct_tasks_and_only_write_their_scope(self) -> None:
+        self.write_parallel_state()
+        backend_claim = self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        frontend_claim = self.lifecycle("claim-hook", "agent-front", "frontend-dev")
+
+        self.assertIn("T-001", json.dumps(backend_claim, ensure_ascii=False))
+        self.assertIn("T-002", json.dumps(frontend_claim, ensure_ascii=False))
+        backend = {
+            "session_id": "session-test",
+            "agent_id": "agent-back",
+            "agent_type": "backend-dev",
+        }
+        frontend = {
+            "session_id": "session-test",
+            "agent_id": "agent-front",
+            "agent_type": "frontend-dev",
+        }
+        self.assertEqual(
+            self.hook("Write", {"file_path": str(self.root / "src/backend/app.py")}, **backend),
+            "",
+        )
+        self.assertEqual(
+            self.hook("Write", {"file_path": str(self.root / "src/frontend/app.ts")}, **frontend),
+            "",
+        )
+        crossed = self.decision(
+            "Write",
+            {"file_path": str(self.root / "src/frontend/stolen.ts")},
+            **backend,
+        )
+        self.assertEqual(crossed["decision"], "deny")
+        self.assertIn("T-001", crossed["reason"])
+        crossed_bash = self.decision(
+            "Bash",
+            {"command": "touch src/frontend/stolen-by-shell.ts"},
+            **backend,
+        )
+        self.assertEqual(crossed_bash["decision"], "deny")
+
+        state_write = self.decision(
+            "Edit",
+            {"file_path": str(self.state / "work.md")},
+            **backend,
+        )
+        self.assertEqual(state_write["decision"], "deny")
+        self.assertIn("Coordinator", state_write["reason"])
+        state_bash = self.decision(
+            "Bash",
+            {"command": f"printf x > {self.state / 'work.md'}"},
+            **backend,
+        )
+        self.assertEqual(state_bash["decision"], "deny")
+
+        svn = self.decision(
+            "Bash",
+            {"command": "svn add src/backend/new.py"},
+            **backend,
+        )
+        svn_commit = self.decision(
+            "Bash",
+            {"command": "svn commit -m 'deliver' src/backend"},
+            **backend,
+        )
+        self.assertEqual(svn["decision"], "deny")
+        self.assertEqual(svn_commit["decision"], "deny")
+        self.assertIn("SVN", svn["reason"])
+        for command in ("git reset --hard HEAD~1", "git clean -fd"):
+            with self.subTest(command=command):
+                destructive = self.decision("Bash", {"command": command}, **backend)
+                self.assertEqual(destructive["decision"], "deny")
+                self.assertIn("Subagent", destructive["reason"])
+
+        self.lifecycle("release-hook", "agent-back", "backend-dev")
+        released = self.decision(
+            "Write",
+            {"file_path": str(self.root / "src/backend/after.py")},
+            **backend,
+        )
+        self.assertEqual(released["decision"], "deny")
+
+    def test_claim_is_invalidated_if_current_owner_changes(self) -> None:
+        self.write_parallel_state()
+        self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        work = self.state / "work.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace(
+                "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | backend-dev | none |",
+                "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | frontend-dev | none |",
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.decision(
+            "Write",
+            {"file_path": str(self.root / "src/backend/after-owner-change.py")},
+            session_id="session-test",
+            agent_id="agent-back",
+            agent_type="backend-dev",
+        )
+
+        self.assertEqual(result["decision"], "deny")
+        self.assertIn("未认领", result["reason"])
+
+    def test_coordinator_can_clear_stale_claims_after_all_agents_stop(self) -> None:
+        self.write_parallel_state(same_role=True)
+        self.lifecycle("claim-hook", "agent-stale", "backend-dev")
+
+        output = self.clear_claims()
+        replacement = self.lifecycle("claim-hook", "agent-replacement", "backend-dev")
+
+        self.assertIn("已清理 1", output)
+        self.assertIn("T-001", json.dumps(replacement, ensure_ascii=False))
+
+    def test_two_backend_instances_atomically_claim_different_tasks(self) -> None:
+        self.write_parallel_state(same_role=True)
+
+        first = self.lifecycle("claim-hook", "agent-one", "backend-dev")
+        second = self.lifecycle("claim-hook", "agent-two", "backend-dev")
+
+        self.assertIn("T-001", json.dumps(first, ensure_ascii=False))
+        self.assertIn("T-002", json.dumps(second, ensure_ascii=False))
+
+    def test_coordinator_must_not_bypass_claim_boundary_with_two_active_tasks(self) -> None:
+        self.write_parallel_state()
+
+        result = self.decision(
+            "Write",
+            {"file_path": str(self.root / "src/backend/direct.py")},
+        )
+
+        self.assertEqual(result["decision"], "ask")
+        self.assertIn("未认领", result["reason"])
+
+    def test_concurrent_backend_claims_do_not_select_the_same_task(self) -> None:
+        self.write_parallel_state(same_role=True)
+        command = [
+            sys.executable,
+            str(WORK_SCRIPT),
+            "--project-root",
+            str(self.root),
+            "claim-hook",
+        ]
+        processes = [
+            subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(2)
+        ]
+        for index, process in enumerate(processes, start=1):
+            assert process.stdin is not None
+            process.stdin.write(
+                json.dumps(
+                    {
+                        "hook_event_name": "SubagentStart",
+                        "session_id": "session-concurrent",
+                        "agent_id": f"agent-race-{index}",
+                        "agent_type": "backend-dev",
+                    }
+                )
+            )
+            process.stdin.close()
+        outputs = []
+        for process in processes:
+            process.wait(timeout=5)
+            assert process.stdout is not None and process.stderr is not None
+            output = process.stdout.read()
+            error = process.stderr.read()
+            process.stdout.close()
+            process.stderr.close()
+            self.assertEqual(process.returncode, 0, error)
+            outputs.append(output)
+
+        combined = "\n".join(outputs)
+        self.assertEqual(combined.count("T-001"), 1)
+        self.assertEqual(combined.count("T-002"), 1)
 
     def test_verify_phase_asks_before_modifying_implementation(self) -> None:
         work = self.state / "work.md"
@@ -287,6 +546,8 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertNotIn("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", settings.get("env", {}))
         for event in ("TeammateIdle", "TaskCompleted", "StopFailure"):
             self.assertNotIn(event, settings["hooks"])
+        self.assertIn("SubagentStart", settings["hooks"])
+        self.assertIn("SubagentStop", settings["hooks"])
 
 
 if __name__ == "__main__":

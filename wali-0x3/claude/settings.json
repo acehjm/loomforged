@@ -36,6 +36,42 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "backend-dev|frontend-dev",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/wali_work.py",
+              "--project-root",
+              "${CLAUDE_PROJECT_DIR}",
+              "claim-hook"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "backend-dev|frontend-dev",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/wali_work.py",
+              "--project-root",
+              "${CLAUDE_PROJECT_DIR}",
+              "release-hook"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
