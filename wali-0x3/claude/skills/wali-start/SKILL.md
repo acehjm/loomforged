@@ -17,15 +17,19 @@ disable-model-invocation: true
 4. 若有阻塞问题，在一轮中集中询问 1–3 个，并为每个问题给出证据、互斥选项、影响和建议默认值。不要逐字段访谈。
 5. 若没有阻塞问题，直接展示一次 Goal+Spec 确认包；用户已有清晰规格时通常不增加澄清轮次。
 
-# 借鉴 to-spec 的综合法
+# 对话到规格的编译规则
 
-把 `to-spec` 当作对话综合方法，不当作另一条交付流程：
+把当前对话、用户资料和代码证据按固定映射编译为一个自包含契约：
 
-- Problem Statement 与 Solution 分别编译到 Goal 的背景、目标和可观察结果；Out of Scope 编译到 Goal Scope Out。
-- 用紧凑的 `Behavior Scenarios` 代替冗长 User Stories，直接把 Given/When/Then 关联到 Acceptance Criteria。
-- Implementation Decisions 编译到 Design Mapping；Testing Decisions 编译到 Verification Mapping。
-- 保留精确项目路径，因为 Design Affected Areas 必须能授权 Work Task Scope。
-- 默认不发布到 Issue Tracker，不新建重复 PRD/规格文件；只有用户明确要求时才额外发布。
+- 用户为什么需要改变、现状造成什么问题，编译到 Goal 的背景。
+- 用户最终要观察到什么结果，编译到 Goal 的目标、Requirement 和 Acceptance Criteria。
+- 用户明确排除的内容与必须保持的边界，编译到 Goal 的 Scope Out 和 Constraints。
+- 可观察行为编译为紧凑的 `Behavior Scenarios`，每个 Given/When/Then 直接关联 Acceptance Criteria。
+- 已确认的实现选择编译到 `Design Mapping`；验证选择编译到 `Verification Mapping`。
+- 每项 Design 保留精确项目路径，使 Affected Areas 能授权 Work Task Scope。
+- 默认交付产物只有 WALI 的 Goal、Spec 和 Work；用户明确要求额外发布时，才把同一契约导出到指定目标。
+
+完成综合的判据是：每项采用的结论都有唯一权威落点，每个 AC 都有行为场景和验证映射，且没有通过第二份规格复制同一含义。
 
 # 编译 Goal
 

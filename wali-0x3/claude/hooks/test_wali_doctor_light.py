@@ -40,7 +40,10 @@ class WaliDoctorLightTest(unittest.TestCase):
         self.assertIn("确认前不修改", skill)
         self.assertIn("一次性写入", skill)
         self.assertIn("Behavior Scenarios", skill)
-        self.assertIn("不发布到 Issue Tracker", skill)
+        self.assertIn("# 对话到规格的编译规则", skill)
+        self.assertIn("默认交付产物只有", skill)
+        self.assertNotIn("to-spec", skill.lower())
+        self.assertNotIn("Matt", skill)
 
     def test_deployment_defines_frontend_and_backend_workers_with_one_work_writer(self) -> None:
         backend = (PROJECT_ROOT / "claude" / "agents" / "backend-dev.md").read_text(encoding="utf-8")

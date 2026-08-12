@@ -181,7 +181,7 @@ PostHook 只在治理状态写入后检查 Goal/Spec/Work 是否完整。发现�
 
 `/wali-start` 先检查代码、测试、配置和项目资料。能自行发现的答案不询问用户；只把会改变结果且只有用户能决定的问题集中为一轮 1–3 个问题。没有阻塞问题时直接给出一次 Goal+Spec 确认包，此前不边综合边写文件。
 
-Spec 综合借鉴 Matt `to-spec` 的 Problem/Solution、Implementation Decisions、Testing Decisions 和 Out of Scope，但不默认发布 Issue，不创建第二份 PRD，也不用冗长 User Stories 复制 Acceptance。WALI 保留精确路径，用 Behavior Scenarios 表达可观察行为，并自主选择现有的最高测试 Seam；只有新 Seam 会改变公开行为或引入高代价时才询问用户。
+Spec 使用固定的“对话到规格”映射：问题背景与期望结果进入 Goal，明确排除项进入 Scope Out，可观察行为进入直连 AC 的 Behavior Scenarios，已确认的实现与验证选择分别进入 Design Mapping 和 Verification Mapping。Affected Areas 保留精确路径，验证自主选择现有的最高测试 Seam；默认只形成 WALI 的 Goal、Spec、Work，只有用户明确要求时才额外发布。
 
 用户确认后，Agent 自动建立 Work、实现、测试、修复、独立验证并选择下一 Task。`May decide` 中的可逆低影响细节由 Agent 自主选择；只有用户可见语义、Acceptance 冲突、不可逆数据迁移、重大安全/费用风险或不可安全回滚的外部副作用才重新交互。
 

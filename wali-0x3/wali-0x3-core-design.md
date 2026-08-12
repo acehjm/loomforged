@@ -63,7 +63,7 @@ outcome: none
 
 Define 的发现、综合、阻塞问题和 Goal+Spec 确认包都在对话与当前上下文中完成。默认不使用三份治理文件作为思考草纸；用户明确确认后，在一个编辑回合中写入彼此一致的 Goal、implementation-ready Spec 和 active Work。只有用户要求保存草案或真实跨会话 handoff 才在确认前持久化 define/draft 状态。
 
-Spec 编译借鉴 `to-spec` 的 Problem/Solution、Implementation Decisions、Testing Decisions 和 Out of Scope，但不默认发布 Issue 或生成第二份 PRD。冗长 User Stories 被替换为直连 AC 的 Given/When/Then Behavior Scenarios；Verification Mapping 还必须指向现有、最高且可定位的测试 Seam。新 Seam 只在改变公开行为或引入高代价接口时进入 `Must ask`。
+Spec 编译使用项目内生的固定映射：问题背景与期望结果进入 Goal，明确排除项进入 Scope Out，可观察行为进入直连 AC 的 Given/When/Then Behavior Scenarios，已确认的实现与验证选择分别进入 Design Mapping 和 Verification Mapping。Verification Mapping 必须指向现有、最高且可定位的测试 Seam；新 Seam 只在改变公开行为或引入高代价接口时进入 `Must ask`。默认交付面只有 Goal、Spec、Work，额外发布由用户明确触发。
 
 ## 3. 深模块
 

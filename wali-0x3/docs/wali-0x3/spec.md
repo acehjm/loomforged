@@ -29,7 +29,7 @@ status: draft
 | Scenario | Given | When | Then | Acceptance |
 | --- | --- | --- | --- | --- |
 
-用简短、可观察的 Given/When/Then 代替冗长 User Stories。每个 `AC-XXX` 至少由一个场景覆盖；正常、错误、边界和兼容场景按实际风险填写，不为凑数量重复 Target Behavior。
+用简短、可观察的 Given/When/Then 编译行为。每个 `AC-XXX` 至少由一个场景覆盖；正常、错误、边界和兼容场景按实际风险填写，不为凑数量重复 Target Behavior。
 
 ## Design Mapping
 
