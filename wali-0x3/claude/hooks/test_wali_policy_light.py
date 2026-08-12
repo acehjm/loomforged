@@ -35,6 +35,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                 "--project-root",
                 str(self.root),
                 "clear-claims",
+                "--all-agents-stopped",
             ],
             capture_output=True,
             check=False,
@@ -75,7 +76,7 @@ class WaliPolicyLightTest(unittest.TestCase):
         output = json.loads(self.hook(tool_name, tool_input, **identity))["hookSpecificOutput"]
         return {
             "decision": output["permissionDecision"],
-            "reason": output["permissionDecisionReason"],
+            "reason": output.get("permissionDecisionReason", ""),
         }
 
     def lifecycle(self, command: str, agent_id: str, agent_type: str) -> dict[str, object]:
@@ -110,6 +111,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                 "--project-root",
                 str(self.root),
                 "clear-claims",
+                "--all-agents-stopped",
             ],
             capture_output=True,
             check=False,
@@ -134,10 +136,10 @@ class WaliPolicyLightTest(unittest.TestCase):
         (self.state / "work.md").write_text(work, encoding="utf-8")
 
     def test_implementation_writes_allow_active_scope_and_ask_outside_it(self) -> None:
-        allowed = self.hook("Write", {"file_path": str(self.root / "src/feature/new.py"), "content": ""})
+        allowed = self.decision("Write", {"file_path": str(self.root / "src/feature/new.py"), "content": ""})
         outside = self.decision("Write", {"file_path": str(self.root / "src/other.py"), "content": ""})
 
-        self.assertEqual(allowed, "")
+        self.assertEqual(allowed["decision"], "allow")
         self.assertEqual(outside["decision"], "ask")
         self.assertIn("Scope", outside["reason"])
 
@@ -150,8 +152,8 @@ class WaliPolicyLightTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(
-            self.hook("Write", {"file_path": str(self.root / "src/feature/next.py"), "content": ""}),
-            "",
+            self.decision("Write", {"file_path": str(self.root / "src/feature/next.py"), "content": ""})["decision"],
+            "allow",
         )
 
     def test_parallel_subagents_claim_distinct_tasks_and_only_write_their_scope(self) -> None:
@@ -172,12 +174,12 @@ class WaliPolicyLightTest(unittest.TestCase):
             "agent_type": "frontend-dev",
         }
         self.assertEqual(
-            self.hook("Write", {"file_path": str(self.root / "src/backend/app.py")}, **backend),
-            "",
+            self.decision("Write", {"file_path": str(self.root / "src/backend/app.py")}, **backend)["decision"],
+            "allow",
         )
         self.assertEqual(
-            self.hook("Write", {"file_path": str(self.root / "src/frontend/app.ts")}, **frontend),
-            "",
+            self.decision("Write", {"file_path": str(self.root / "src/frontend/app.ts")}, **frontend)["decision"],
+            "allow",
         )
         crossed = self.decision(
             "Write",
@@ -267,6 +269,82 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertIn("已清理 1", output)
         self.assertIn("T-001", json.dumps(replacement, ensure_ascii=False))
 
+    def test_clear_claims_requires_confirmation_and_is_denied_to_implementation_agents(self) -> None:
+        missing_confirmation = subprocess.run(
+            [
+                sys.executable,
+                str(WORK_SCRIPT),
+                "--project-root",
+                str(self.root),
+                "clear-claims",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        denied = self.decision(
+            "Bash",
+            {
+                "command": "python3 .claude/hooks/wali_work.py --project-root . "
+                "clear-claims --all-agents-stopped"
+            },
+            session_id="session-test",
+            agent_id="agent-back",
+            agent_type="backend-dev",
+        )
+        denied_api = self.decision(
+            "Bash",
+            {
+                "command": "PYTHONPATH=.claude/hooks python3 -c \"from pathlib import Path; "
+                "from wali_work import clear_agent_claims; clear_agent_claims(Path('.'))\""
+            },
+            session_id="session-test",
+            agent_id="agent-back",
+            agent_type="backend-dev",
+        )
+
+        self.assertNotEqual(missing_confirmation.returncode, 0)
+        self.assertIn("--all-agents-stopped", missing_confirmation.stdout)
+        self.assertEqual(denied["decision"], "deny")
+        self.assertIn("claim", denied["reason"])
+        self.assertEqual(denied_api["decision"], "deny")
+        self.assertIn("claim", denied_api["reason"])
+
+    def test_named_implementation_agent_without_agent_id_has_no_coordinator_write_access(self) -> None:
+        identity = {"agent_type": "backend-dev"}
+
+        state_write = self.decision(
+            "Write",
+            {"file_path": str(self.state / "work.md")},
+            **identity,
+        )
+        implementation_write = self.decision(
+            "Write",
+            {"file_path": str(self.root / "src/feature/direct.py")},
+            **identity,
+        )
+        shell_write = self.decision(
+            "Bash",
+            {"command": "touch src/feature/direct.py"},
+            **identity,
+        )
+        hidden_shell_write = self.decision(
+            "Bash",
+            {
+                "command": "python3 -c \"from pathlib import Path; "
+                "Path('docs/wali-0x3/work.md').write_text('stolen')\""
+            },
+            **identity,
+        )
+
+        for result in (
+            state_write,
+            implementation_write,
+            shell_write,
+            hidden_shell_write,
+        ):
+            self.assertEqual(result["decision"], "deny")
+
     def test_two_backend_instances_atomically_claim_different_tasks(self) -> None:
         self.write_parallel_state(same_role=True)
 
@@ -344,13 +422,20 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertIn("verify phase", decision["reason"])
 
     def test_recoverable_destructive_commands_ask_without_blocking_normal_shell(self) -> None:
-        self.assertEqual(self.hook("Bash", {"command": "python3 -m unittest -v tests/test_feature.py"}), "")
-        self.assertEqual(self.hook("Bash", {"command": "python3 -m unittest 2>&1"}), "")
-        self.assertEqual(self.hook("Bash", {"command": "svn cleanup"}), "")
-        self.assertEqual(self.hook("Bash", {"command": "curl -f https://example.test/health"}), "")
-        self.assertEqual(self.hook("Bash", {"command": "curl -x proxy.test https://example.test/health"}), "")
-        self.assertEqual(self.hook("Bash", {"command": "truncate -s 0 src/feature/cache.txt"}), "")
-        self.assertEqual(self.hook("Bash", {"command": "touch -t 202608111200 src/feature/cache.txt"}), "")
+        for command in (
+            "python3 -m unittest -v tests/test_feature.py",
+            "python3 -m unittest 2>&1",
+            "svn cleanup",
+            "curl -f https://example.test/health",
+            "curl -x proxy.test https://example.test/health",
+            "truncate -s 0 src/feature/cache.txt",
+            "touch -t 202608111200 src/feature/cache.txt",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(
+                    self.decision("Bash", {"command": command})["decision"],
+                    "allow",
+                )
 
         risky = self.decision("Bash", {"command": "git reset --hard HEAD~1"})
         self.assertEqual(risky["decision"], "ask")
@@ -449,7 +534,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                 )
 
     def test_compound_local_svn_mutations_still_obey_task_scope(self) -> None:
-        allowed = self.hook(
+        allowed = self.decision(
             "Bash",
             {"command": "python3 check.py && svn add src/feature/new.py"},
         )
@@ -458,13 +543,145 @@ class WaliPolicyLightTest(unittest.TestCase):
             {"command": "python3 check.py && svn add src/outside.py"},
         )
 
-        self.assertEqual(allowed, "")
+        self.assertEqual(allowed["decision"], "allow")
         self.assertEqual(outside["decision"], "ask")
+
+    def test_all_working_copy_svn_mutations_are_denied_to_implementation_agents(self) -> None:
+        self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        identity = {
+            "session_id": "session-test",
+            "agent_id": "agent-back",
+            "agent_type": "backend-dev",
+        }
+        commands = (
+            "svn patch changes.patch src/feature",
+            "svn merge ^/trunk src/feature",
+            "svn switch ^/branches/feature src/feature",
+            "svn checkout https://svn.example.test/trunk src/feature/checkout",
+            "svn export https://svn.example.test/assets src/feature/assets",
+            "svn changelist ready src/feature/app.py",
+            "svn ps feature-enabled yes src/feature/app.py",
+            "svn pd feature-enabled src/feature/app.py",
+            "svn pe feature-enabled src/feature/app.py",
+            "svn relocate https://old.example.test https://new.example.test src/feature",
+            "svn resolved src/feature/app.py",
+            "svn upgrade src/feature",
+            "SVN_EXPERIMENTAL_COMMANDS=shelf3 svn x-shelve feature src/feature/app.py",
+            "SVN_EXPERIMENTAL_COMMANDS=shelf3 svn x-unshelve feature",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.decision("Bash", {"command": command}, **identity)
+                self.assertEqual(result["decision"], "deny")
+                self.assertIn("SVN", result["reason"])
+
+    def test_implementation_agents_only_run_explicitly_read_only_svn_commands(self) -> None:
+        self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        identity = {
+            "session_id": "session-test",
+            "agent_id": "agent-back",
+            "agent_type": "backend-dev",
+        }
+        commands = (
+            "svn status",
+            "svn diff --internal-diff src/feature",
+            "svn info src/feature",
+            "svn log -l 1",
+            "svn list ^/trunk",
+            "svn propget feature-enabled src/feature/app.py",
+            "svn --version",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.decision("Bash", {"command": command}, **identity)
+                self.assertEqual(result["decision"], "allow")
+
+    def test_coordinator_svn_source_operands_do_not_count_as_scope_targets(self) -> None:
+        commands = (
+            "svn patch changes.patch src/feature",
+            "svn patch --strip 1 changes.patch src/feature",
+            "svn merge ^/trunk src/feature",
+            "svn merge src/source src/feature",
+            "svn merge -r 1:2 src/source src/feature",
+            "svn switch ^/branches/feature src/feature",
+            "svn switch --relocate https://old.example.test https://new.example.test src/feature",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.decision("Bash", {"command": command})
+                self.assertEqual(result["decision"], "allow")
+
+        outside = self.decision(
+            "Bash",
+            {"command": "svn merge ^/trunk src/outside"},
+        )
+        implicit_current_directory = self.decision(
+            "Bash",
+            {"command": "svn merge src/feature/source"},
+        )
+        cherrypick_implicit_current_directory = self.decision(
+            "Bash",
+            {"command": "svn merge -r 1:2 src/feature/source"},
+        )
+        two_source_implicit_current_directory = self.decision(
+            "Bash",
+            {"command": "svn merge src/source@10 src/other@20"},
+        )
+        mixed_two_source_implicit_current_directory = self.decision(
+            "Bash",
+            {"command": "svn merge ^/trunk@10 src/feature/source@20"},
+        )
+        self.assertEqual(outside["decision"], "ask")
+        self.assertIn("Scope", outside["reason"])
+        self.assertEqual(implicit_current_directory["decision"], "ask")
+        self.assertIn("Scope", implicit_current_directory["reason"])
+        self.assertEqual(cherrypick_implicit_current_directory["decision"], "ask")
+        self.assertIn("Scope", cherrypick_implicit_current_directory["reason"])
+        self.assertEqual(two_source_implicit_current_directory["decision"], "ask")
+        self.assertIn("Scope", two_source_implicit_current_directory["reason"])
+        self.assertEqual(
+            mixed_two_source_implicit_current_directory["decision"],
+            "ask",
+        )
+        self.assertIn(
+            "Scope",
+            mixed_two_source_implicit_current_directory["reason"],
+        )
+
+    def test_local_svn_property_and_mkdir_operations_are_not_remote_writes(self) -> None:
+        commands = (
+            "svn mkdir src/feature/new-dir",
+            "svn propset feature-enabled yes src/feature/app.py",
+            "svn propset feature-enabled -F property.txt src/feature/app.py",
+            "svn propdel feature-enabled src/feature/app.py",
+            "svn propedit --encoding UTF-8 feature-enabled src/feature/app.py",
+            "svn update --cl ready src/feature/app.py",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.decision("Bash", {"command": command})
+                self.assertEqual(result["decision"], "allow")
+
+        for command in (
+            "svn mkdir ^/branches/new -m 'new branch'",
+            "svn propset feature-enabled yes https://svn.example.test/trunk/app.py",
+            "svn propset release approved --revprop -r 12 src/feature/app.py",
+            "svn propdel release --revprop -r 12 src/feature/app.py",
+            "svn propedit release --revprop -r 12 src/feature/app.py",
+        ):
+            with self.subTest(command=command):
+                result = self.decision("Bash", {"command": command})
+                self.assertEqual(result["decision"], "ask")
+                self.assertIn("外部", result["reason"])
 
     def test_explicit_shell_file_writes_obey_scope_and_control_plane(self) -> None:
         self.assertEqual(
-            self.hook("Bash", {"command": "touch src/feature/new.py"}),
-            "",
+            self.decision("Bash", {"command": "touch src/feature/new.py"})["decision"],
+            "allow",
         )
         outside = self.decision("Bash", {"command": "touch src/outside.py"})
         control = self.decision("Bash", {"command": "printf x > CLAUDE.md"})
@@ -530,8 +747,8 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertEqual(verify["decision"], "ask")
 
     def test_skill_and_agent_invocation_are_not_restricted_by_wali(self) -> None:
-        self.assertEqual(self.hook("Skill", {"skill": "external:example"}), "")
-        self.assertEqual(self.hook("Agent", {"description": "delegate"}), "")
+        self.assertEqual(self.decision("Skill", {"skill": "external:example"})["decision"], "allow")
+        self.assertEqual(self.decision("Agent", {"description": "delegate"})["decision"], "allow")
 
     def test_settings_skip_read_tools_and_do_not_enable_team_supervision_by_default(self) -> None:
         settings = json.loads(SETTINGS.read_text(encoding="utf-8"))

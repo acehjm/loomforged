@@ -401,6 +401,39 @@ class WaliWorkCliTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_work_checkpoint_rejects_coordinator_in_a_dual_active_set(self) -> None:
+        self.write_parallel_state(second_owner="coordinator")
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("双 active Task", result.stdout)
+        self.assertIn("实现 Agent", result.stdout)
+
+    def test_parallel_never_reports_a_coordinator_task(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace(
+                "`src/feature/**` |",
+                "`src/feature/**`, `src/integration/**` |",
+            ),
+        )
+        work = WORK.replace(
+            "| T-001 | AC-001 | 实现功能 | working |",
+            "| T-001 | AC-001 | 实现功能 | pending |",
+        ).replace("active_task: T-001", "active_task: none")
+        work = work.replace(
+            "\n## Issues",
+            "\n| T-002 | AC-001 | 串行集成 | pending | none | `src/integration/**` | "
+            "none | coordinator | none |\n\n## Issues",
+        )
+        self.write("work.md", work)
+
+        result = self.run_cli("parallel")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "")
+
     def test_work_checkpoint_rejects_overlapping_or_more_than_two_active_tasks(self) -> None:
         self.write_parallel_state(second_scope="`src/feature/ui/**`")
         overlapping = self.run_cli("check", "--checkpoint", "work")

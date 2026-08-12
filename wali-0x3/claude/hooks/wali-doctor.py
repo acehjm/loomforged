@@ -21,7 +21,7 @@ CORE_PROJECT_PATHS = (
     "docs/wali-0x3/work.md",
 )
 AGENT_NAMES = (
-    "coordinator",
+    "wali-0x3",
     "architect",
     "backend-dev",
     "frontend-dev",
@@ -30,7 +30,7 @@ AGENT_NAMES = (
 )
 CORE_CONTROL_PATHS = (
     "settings.json",
-    "agents/coordinator.md",
+    "agents/wali-0x3.md",
     "agents/architect.md",
     "agents/backend-dev.md",
     "agents/frontend-dev.md",
@@ -97,6 +97,8 @@ def _settings(project_root: Path) -> Diagnostic:
     except (OSError, json.JSONDecodeError) as error:
         return Diagnostic("FAIL", "Hook 设置", str(error))
     skill_shell_disabled = settings.get("disableSkillShellExecution") is not False
+    if settings.get("agent") != "wali-0x3":
+        return Diagnostic("FAIL", "Hook 设置", "默认 Agent 必须是 wali-0x3")
     hooks = settings.get("hooks")
     if not isinstance(hooks, dict):
         return Diagnostic("FAIL", "Hook 设置", "缺少 hooks")

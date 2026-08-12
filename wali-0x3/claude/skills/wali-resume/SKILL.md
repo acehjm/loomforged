@@ -10,7 +10,7 @@ disable-model-invocation: true
 4. 恢复开始后将 `stop_intent` 改回 `continue`。普通会话不维护 handoff。
 5. 按 phase 推进：
    - `define`：根据当前对话、代码事实与已有 draft 重建 Goal+Spec 候选包，只询问无法自行发现的阻塞问题。不边探索边增量重写三份状态；用户确认后才一次性写入并进入 work，除非用户明确要求保存新草案。
-   - `work`：依据 Autonomous Decision Contract 恢复 `active_task` 中的一至两项。核对每个 Task 的真实差异和 Evidence；旧的临时 claim 不是恢复权威，重新调用实现 Agent 时由 Hook 在新会话重新认领。只有确认当前没有实现 Agent 运行时，才可用 `wali_work.py clear-claims` 清理异常遗留认领。若 Task 已不再 `working/review`，优先修复 Work 状态。
+   - `work`：依据 Autonomous Decision Contract 恢复 `active_task` 中的一至两项。核对每个 Task 的真实差异和 Evidence；旧的临时 claim 不是恢复权威，重新调用实现 Agent 时由 Hook 在新会话重新认领。只有确认当前没有实现 Agent 运行时，才可用 `wali_work.py clear-claims --all-agents-stopped` 清理异常遗留认领。若 Task 已不再 `working/review`，优先修复 Work 状态。
    - `verify`：独立审查和测试，默认不改实现；需要修复时优先把 Task/Issue 状态写回 `work.md` 后返回 `work`。
    - `paused`：只处理 `waiting_for` 指向的方向、验收或外部条件。
    - `done`：只读复核；新工作使用新 Goal ID 返回 `define`。

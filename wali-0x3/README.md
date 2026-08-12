@@ -111,7 +111,7 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 
 - 进入 work：Goal 已确认、Spec implementation-ready、没有 Open Questions，每个 AC 有 Behavior Scenario 和可定位测试 Seam，Requirement/AC 映射完整且至少有一个 Task。
 - 进入 verify：所有 active Task 已 review 并有实现 Evidence。
-- 进入 done：所有 Task 和 AC 已完成，没有未关闭 blocker。
+- 校验 done：先在同一 Work 编辑回合设置终态，再检查所有 Task 和 AC 已完成且没有未关闭 blocker；检查失败不得报告完成。
 
 ## Hook 行为
 
@@ -121,7 +121,7 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 
 Policy 是软门禁：
 
-- 普通命令和已认领 active Task Scope 内写入直接 `allow`。
+- 普通命令和已认领 active Task Scope 内写入显式返回 `allow`，跳过 Claude Code 的常规权限提示；更高优先级的 deny/ask 规则仍然生效。
 - 外部写入、控制面修改、Scope 外写入、非 work 阶段写入和可恢复的高风险本地操作返回 `ask`。
 - 可能删除项目根、主目录或系统根的灾难性操作，以及实现 Subagent 执行破坏性工作区命令或越过认领、Scope、控制面、SVN 调度边界时返回 `deny`。这些拒绝都指向 Coordinator，不阻断主会话修复。
 
@@ -133,9 +133,9 @@ Scope 对 Write/Edit 等原生写入工具是默认边界；Bash 还识别重定
 
 最多两个实现 Agent 并发。`SubagentStart` 根据 `session_id + agent_id + agent_type`，通过系统临时目录中的逐 Task `O_EXCL` 文件原子认领一个 Owner 匹配的 active Task；每次工具调用还会复核当前 Owner。`SubagentStop` 释放认领。认领不写仓库、不改 Work、没有轮询心跳，也不持有长期进程锁。两个同类型 Agent 也可以各认领一个 Scope 互斥的 Task。
 
-若 Agent 异常退出且 Stop Hook 未执行，Coordinator 等其他实现 Agent 全部结束后运行 `python3 .claude/hooks/wali_work.py clear-claims`，再重新分派。该命令只清理系统临时目录中的本项目 claim；有实现 Agent 仍在运行时不得调用。
+若 Agent 异常退出且 Stop Hook 未执行，Coordinator 等其他实现 Agent 全部结束后运行 `python3 .claude/hooks/wali_work.py clear-claims --all-agents-stopped`，再重新分派。该参数是对“全部实现 Agent 已停止”的显式确认；实现 Agent 无权调用。命令只清理系统临时目录中的本项目 claim。
 
-Coordinator 是 Goal/Spec/Work/Handoff 的唯一写入者。Backend/Frontend Dev、Reviewer 和 Tester 只返回结构化结果；Coordinator 核对路径与真实差异后，一次批量写 Work，并串行执行必要的 SVN add/delete/move/commit。共享配置、lockfile、路由总表、生成代码和数据库迁移必须归一个 Task，或拆成后续串行 integration Task。
+Coordinator 是 Goal/Spec/Work/Handoff 的唯一写入者。Backend/Frontend Dev、Reviewer 和 Tester 只返回结构化结果；Coordinator 核对路径与真实差异后，一次批量写 Work，并串行执行所有必要的 SVN 工作副本与远端调度。共享配置、lockfile、路由总表、生成代码和数据库迁移必须归一个 Task，或拆成后续串行 integration Task。
 
 ### 外部 Skill
 

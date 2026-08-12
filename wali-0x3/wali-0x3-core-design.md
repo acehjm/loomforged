@@ -96,7 +96,7 @@ PreToolUse 的高频门禁仍只解析 Goal/Work frontmatter 和 active Task 行
 
 认领只在 Agent 启停时发生，不写 Work、不轮询、无心跳、无长期锁，也不承担恢复权威。新会话从 Goal/Spec/Work 与真实差异恢复，并重新认领。PreToolUse 用该认领把每个实现 Agent 限制在自己的 Task Scope，并在每次写入时复核当前 Owner；Goal/Spec/Work/Handoff 仍只有 Coordinator 可以写。
 
-若 Agent 异常退出导致 Stop Hook 未释放 claim，Coordinator 必须等待其他实现 Agent 全部结束，再调用 `wali_work.py clear-claims` 清理本项目临时 claim 并重新分派。这是显式恢复事务，不是心跳、TTL 或持续锁；运行中的实现 Agent 存在时不得清理。
+若 Agent 异常退出导致 Stop Hook 未释放 claim，Coordinator 必须等待其他实现 Agent 全部结束，再调用 `wali_work.py clear-claims --all-agents-stopped` 清理本项目临时 claim 并重新分派。该参数显式确认所有实现 Agent 已停止，且实现 Agent 无权调用；这是恢复事务，不是心跳、TTL 或持续锁。
 
 ### Stop
 
@@ -136,7 +136,7 @@ Spec 把“何时问用户”变成显式接口，而不是让每个 Agent 临�
 
 `parallel` 输出只是并发候选，不是权限。Coordinator 最多选择两个依赖已满足、Scope 两两互斥的 working Task；可以是前端+后端，也可以是两个同类型实现 Agent。TaskClaim 提供实例身份边界，PreToolUse 提供已知显式写入的 Scope 边界。
 
-同一 SVN 工作副本的文件系统并不天然隔离，因此共享配置、lockfile、路由总表、生成代码、数据库迁移以及任何重叠 Scope 不能并发写；它们必须归一个 Task，或拆成后续串行 integration Task。实现 Agent 不做 SVN add/delete/move/commit，Coordinator 在所有返回结果核对后串行调度。需要执行不可信或有隐藏副作用的程序时仍使用独立工作区/沙箱。单任务不创建图、Mermaid 或并行候选。
+同一 SVN 工作副本的文件系统并不天然隔离，因此共享配置、lockfile、路由总表、生成代码、数据库迁移以及任何重叠 Scope 不能并发写；它们必须归一个 Task，或拆成后续串行 integration Task。实现 Agent 不做任何 SVN 工作副本或远端调度，Coordinator 在所有返回结果核对后串行处理。需要执行不可信或有隐藏副作用的程序时仍使用独立工作区/沙箱。单任务不创建图、Mermaid 或并行候选。
 
 ## 7. 外部副作用
 

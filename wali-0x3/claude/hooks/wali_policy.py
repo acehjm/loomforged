@@ -21,6 +21,7 @@ from pathlib import Path
 
 from wali_work import (
     GOAL_FILE,
+    IMPLEMENTATION_AGENT_TYPES,
     PolicyContext,
     PolicyTask,
     SPEC_FILE,
@@ -45,8 +46,108 @@ STATE_FILES = {
     (STATE_DIR / "handoff.md").as_posix(),
 }
 CONTROL_PREFIXES = (".claude/", "claude/", ".svn/")
-LOCAL_SVN_MUTATIONS = {"add", "delete", "del", "remove", "rm", "move", "mv", "copy", "cp", "update", "up", "resolve"}
-REMOTE_SVN_MUTATIONS = {"commit", "ci", "lock", "unlock", "mkdir", "propset", "propdel", "import"}
+LOCAL_SVN_MUTATIONS = {
+    "add",
+    "changelist",
+    "checkout",
+    "cl",
+    "co",
+    "copy",
+    "cp",
+    "delete",
+    "del",
+    "export",
+    "merge",
+    "mkdir",
+    "move",
+    "mv",
+    "patch",
+    "pd",
+    "pe",
+    "pdel",
+    "pedit",
+    "propdel",
+    "propedit",
+    "propset",
+    "ps",
+    "pset",
+    "remove",
+    "relocate",
+    "ren",
+    "rename",
+    "resolve",
+    "resolved",
+    "rm",
+    "switch",
+    "sw",
+    "update",
+    "up",
+    "upgrade",
+}
+REMOTE_SVN_MUTATIONS = {
+    "ci",
+    "commit",
+    "import",
+    "lock",
+    "unlock",
+}
+SVN_OPERATION_ALIASES = {
+    "ci": "commit",
+    "cl": "changelist",
+    "co": "checkout",
+    "cp": "copy",
+    "del": "delete",
+    "mv": "move",
+    "pd": "propdel",
+    "pe": "propedit",
+    "pdel": "propdel",
+    "pedit": "propedit",
+    "ps": "propset",
+    "pset": "propset",
+    "remove": "delete",
+    "ren": "move",
+    "rename": "move",
+    "resolved": "resolve",
+    "rm": "delete",
+    "sw": "switch",
+    "up": "update",
+}
+SVN_OPTIONS_WITH_VALUES = {
+    "--accept",
+    "--change",
+    "--cl",
+    "--changelist",
+    "--depth",
+    "--diff-cmd",
+    "--encoding",
+    "--extensions",
+    "--file",
+    "--message",
+    "--native-eol",
+    "--revision",
+    "--strip",
+    "--targets",
+    "--with-revprop",
+    "-c",
+    "-F",
+    "-m",
+    "-r",
+    "-x",
+}
+READ_ONLY_SVN_OPERATIONS = {
+    "annotate",
+    "blame",
+    "cat",
+    "diff",
+    "help",
+    "info",
+    "list",
+    "log",
+    "mergeinfo",
+    "proplist",
+    "propget",
+    "status",
+}
 
 
 @dataclass(frozen=True)
@@ -70,6 +171,9 @@ def _scope_matches(path: str, scope: str) -> bool:
     normalized = scope.replace("\\", "/").strip().strip("`")
     if normalized == path:
         return True
+    if normalized.endswith("/**"):
+        prefix = normalized[:-3].rstrip("/")
+        return path == prefix or path.startswith(prefix + "/")
     if not any(token in normalized for token in ("*", "?", "[")):
         return path.startswith(normalized.rstrip("/") + "/")
     return fnmatch.fnmatchcase(path, normalized)
@@ -166,6 +270,9 @@ def _command_segments(command: str) -> tuple[str, ...]:
 def _unwrap_arguments(arguments: list[str]) -> list[str]:
     result = list(arguments)
     while result:
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", result[0]):
+            result = result[1:]
+            continue
         program = Path(result[0]).name.lower()
         if program == "command":
             result = result[1:]
@@ -268,6 +375,169 @@ def _svn_operation(arguments: list[str]) -> tuple[str, list[str]]:
     )
 
 
+def _canonical_svn_operation(operation: str) -> str:
+    aliases = {
+        "?": "help",
+        "ann": "annotate",
+        "di": "diff",
+        "h": "help",
+        "ls": "list",
+        "pget": "propget",
+        "pg": "propget",
+        "plist": "proplist",
+        "pl": "proplist",
+        "praise": "blame",
+        "stat": "status",
+        "st": "status",
+        **SVN_OPERATION_ALIASES,
+    }
+    return aliases.get(operation, operation)
+
+
+def _svn_operands(arguments: list[str]) -> tuple[str, list[str]]:
+    operation, remaining = _svn_operation(arguments)
+    operands = _positional_arguments(
+        remaining,
+        options_with_values=SVN_OPTIONS_WITH_VALUES,
+    )
+    if (
+        _canonical_svn_operation(operation) == "propset"
+        and _option_value(remaining, {"-F", "--file"}) is not None
+        and operands
+    ):
+        operands.insert(1, "<property-file-value>")
+    return operation, operands
+
+
+def _is_svn_repository_target(value: str) -> bool:
+    return value.startswith("^/") or bool(
+        re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", value)
+    )
+
+
+def _svn_operand_has_peg_revision(value: str) -> bool:
+    _path, separator, revision = value.rpartition("@")
+    return bool(separator and revision)
+
+
+def _svn_local_target_operands(
+    operation: str,
+    operands: list[str],
+    arguments: list[str],
+) -> list[str]:
+    canonical = _canonical_svn_operation(operation)
+    if canonical == "patch":
+        candidates = operands[1:2] if len(operands) > 1 else ["."]
+    elif canonical == "merge":
+        has_repository_source = any(
+            _is_svn_repository_target(item) for item in operands
+        )
+        local_operands = [item for item in operands if not _is_svn_repository_target(item)]
+        if _svn_has_revision_selector(arguments):
+            # Cherry-pick form: SOURCE [TARGET_WCPATH].  With one operand the
+            # target is the current working copy, not the source path.
+            candidates = operands[-1:] if len(operands) >= 2 else ["."]
+        elif len(operands) == 2 and all(
+            _svn_operand_has_peg_revision(item) for item in operands
+        ):
+            # Two explicitly pegged operands select the two-source form, even
+            # when one is a repository URL; without TARGET_WCPATH SVN writes
+            # to the current working copy.
+            candidates = ["."]
+        elif has_repository_source:
+            candidates = local_operands[-1:] if local_operands else ["."]
+        elif len(operands) >= 3:
+            candidates = operands[-1:]
+        elif len(operands) == 2:
+            # Automatic merge form: SOURCE [TARGET_WCPATH].  Local two-source
+            # merges require explicit peg revisions, handled by the branch above.
+            candidates = operands[-1:]
+        else:
+            candidates = ["."]
+    elif canonical == "switch":
+        relocating = (
+            len(operands) > 1
+            and _is_svn_repository_target(operands[0])
+            and _is_svn_repository_target(operands[1])
+        )
+        if relocating:
+            candidates = operands[2:3] or ["."]
+        else:
+            candidates = operands[1:2] if len(operands) > 1 else ["."]
+    elif canonical in {"checkout", "export"}:
+        candidates = operands[-1:] if len(operands) > 1 else []
+    elif canonical == "changelist":
+        candidates = operands[1:]
+    elif canonical == "relocate":
+        candidates = operands[2:] or ["."]
+    elif canonical == "propset":
+        candidates = operands[2:]
+    elif canonical in {"propdel", "propedit"}:
+        candidates = operands[1:]
+    elif canonical == "copy":
+        candidates = operands[-1:]
+    elif canonical == "move":
+        candidates = operands
+    elif canonical in {"update", "upgrade"}:
+        candidates = operands or ["."]
+    else:
+        candidates = operands
+    return [item for item in candidates if not _is_svn_repository_target(item)]
+
+
+def _svn_has_revision_selector(arguments: list[str]) -> bool:
+    return any(
+        item in {"-c", "--change", "-r", "--revision"}
+        or item.startswith(("--change=", "--revision="))
+        or (item.startswith("-c") and len(item) > 2)
+        or (item.startswith("-r") and len(item) > 2)
+        for item in arguments[1:]
+    )
+
+
+def _implementation_agent_svn_violation(command: str) -> bool:
+    for segment in _command_segments(command):
+        arguments = _safe_split(segment)
+        if not arguments:
+            continue
+        visible = _unwrap_arguments(arguments)
+        if not visible or Path(visible[0]).name.lower() != "svn":
+            continue
+        operation, _remaining = _svn_operation(visible)
+        if not operation:
+            if any(
+                item.lower() in {"--help", "--version", "-h"}
+                for item in visible[1:]
+            ):
+                continue
+            return True
+        if _canonical_svn_operation(operation) not in READ_ONLY_SVN_OPERATIONS:
+            return True
+    return False
+
+
+def _svn_writes_repository(arguments: list[str]) -> bool:
+    operation, operands = _svn_operands(arguments)
+    canonical = _canonical_svn_operation(operation)
+    if operation in REMOTE_SVN_MUTATIONS or canonical in REMOTE_SVN_MUTATIONS:
+        return True
+    if canonical in {"propset", "propdel", "propedit"} and any(
+        item.lower() == "--revprop" for item in arguments
+    ):
+        return True
+    if canonical in {"copy", "move"}:
+        return bool(operands and _is_svn_repository_target(operands[-1]))
+    if canonical == "propset":
+        targets = operands[2:]
+    elif canonical in {"propdel", "propedit"}:
+        targets = operands[1:]
+    elif canonical in {"delete", "mkdir"}:
+        targets = operands
+    else:
+        targets = []
+    return any(_is_svn_repository_target(item) for item in targets)
+
+
 def _dangerous_local_command(command: str) -> bool:
     compact = re.sub(r"\s+", " ", command.strip().lower())
     patterns = (
@@ -336,8 +606,7 @@ def _external_write(command: str) -> bool:
             if operation in {"push", "send-email"}:
                 return True
         if program == "svn":
-            operation, _remaining = _svn_operation(arguments)
-            if operation in REMOTE_SVN_MUTATIONS:
+            if _svn_writes_repository(arguments):
                 return True
         lowered = [argument.lower() for argument in arguments[1:]]
         if program in {"npm", "pnpm", "yarn"} and "publish" in lowered:
@@ -590,21 +859,11 @@ def _svn_local_mutations(
         arguments = _unwrap_arguments(arguments)
         if not arguments or Path(arguments[0]).name.lower() != "svn":
             continue
-        operation, raw_targets = _svn_operation(arguments)
+        operation, operands = _svn_operands(arguments)
         if operation not in LOCAL_SVN_MUTATIONS:
             continue
-        raw_targets = raw_targets[raw_targets.index("--") + 1 :] if "--" in raw_targets else raw_targets
         targets: list[str] = []
-        skip_next = False
-        for argument in raw_targets:
-            if skip_next:
-                skip_next = False
-                continue
-            if argument in {"--accept", "--depth", "-r", "--revision"}:
-                skip_next = True
-                continue
-            if argument.startswith("-"):
-                continue
+        for argument in _svn_local_target_operands(operation, operands, arguments):
             relative = _relative_path(project_root, argument)
             if relative is None:
                 targets = []
@@ -683,12 +942,46 @@ def _agent_identity(payload: dict[str, object]) -> tuple[str, str, str]:
     )
 
 
+def _is_restricted_agent(payload: dict[str, object]) -> bool:
+    """Return true for child agents and directly launched implementation roles."""
+
+    _session_id, agent_id, agent_type = _agent_identity(payload)
+    return bool(agent_id) or agent_type in IMPLEMENTATION_AGENT_TYPES
+
+
+def _clears_agent_claims(command: str) -> bool:
+    if re.search(r"\bclear_agent_claims\b", command):
+        return True
+    for segment in _command_segments(command):
+        arguments = _safe_split(segment)
+        if not arguments:
+            continue
+        visible = _unwrap_arguments(arguments)
+        lowered = [item.lower() for item in visible]
+        script_indexes = [
+            index
+            for index, item in enumerate(visible)
+            if Path(item).name.lower() == "wali_work.py"
+        ]
+        module_indexes = [
+            index
+            for index, item in enumerate(lowered[:-1])
+            if item == "-m" and lowered[index + 1] in {"wali_work", "wali_work.py"}
+        ]
+        start_indexes = script_indexes + module_indexes
+        if any("clear-claims" in lowered[index + 1 :] for index in start_indexes):
+            return True
+    return False
+
+
 def _task_for_action(
     project_root: Path,
     context: PolicyContext,
     payload: dict[str, object],
 ) -> PolicyTask | None:
     session_id, agent_id, agent_type = _agent_identity(payload)
+    if agent_type in IMPLEMENTATION_AGENT_TYPES and not agent_id:
+        return None
     if agent_id:
         return claimed_policy_task(
             project_root,
@@ -707,12 +1000,25 @@ def _decide_bash(
 ) -> Decision:
     if not command.strip():
         return Decision(False, "Bash 命令不能为空")
-    _session_id, agent_id, _agent_type = _agent_identity(payload)
+    _session_id, agent_id, agent_type = _agent_identity(payload)
+    if agent_type in IMPLEMENTATION_AGENT_TYPES and not agent_id:
+        return Decision(
+            False,
+            "直接启动的实现 Agent 没有 Task claim，不能执行 Bash；请由 wali-0x3 分派",
+        )
+    restricted_agent = _is_restricted_agent(payload)
+    if _clears_agent_claims(command) and restricted_agent:
+        return Decision(False, "实现 Agent 不能清理 Task claim；请返回 wali-0x3")
+    if restricted_agent and _implementation_agent_svn_violation(command):
+        return Decision(
+            False,
+            "实现 Agent 只执行明确只读的 SVN 命令；其他 SVN 调度请返回 Coordinator",
+        )
     dangerous_local = _dangerous_local_command(command)
     if dangerous_local:
         if _catastrophic_local_command(project_root, command):
             return Decision(False, "命令可能删除项目根、主目录或系统根，已拒绝")
-        if agent_id:
+        if restricted_agent:
             return Decision(False, "Subagent 不执行破坏性工作区操作；请返回 Coordinator")
     external_write = _external_write(command)
     svn_mutations = _svn_local_mutations(project_root, command)
@@ -735,21 +1041,21 @@ def _decide_bash(
             continue
         relative = _relative_path(project_root, raw_target)
         if relative is None:
-            if agent_id:
+            if restricted_agent:
                 return Decision(False, "Subagent 的显式文件写入必须位于已认领 Task Scope；请返回 Coordinator")
             confirmation_reasons.append("显式文件写入目标位于项目外")
             continue
         if relative in STATE_FILES:
-            if agent_id:
+            if restricted_agent:
                 return Decision(False, "Subagent 不能修改治理文件；请返回 Coordinator")
             continue
         if relative == "CLAUDE.md" or relative.startswith(CONTROL_PREFIXES):
-            if agent_id:
+            if restricted_agent:
                 return Decision(False, f"Subagent 不能修改控制面 {relative}；请返回 Coordinator")
             confirmation_reasons.append(f"命令会修改 wali-0x3 控制面 {relative}")
             continue
         implementation_targets.append(relative)
-    if has_svn_mutation and agent_id:
+    if has_svn_mutation and restricted_agent:
         return Decision(False, "Subagent 不执行 SVN 调度；请返回 Coordinator 串行处理")
     if svn_mutations or implementation_targets:
         try:
@@ -757,13 +1063,13 @@ def _decide_bash(
         except WorkStateError:
             context = None
         if context is None or context.phase != "work":
-            if agent_id:
+            if restricted_agent:
                 return Decision(False, "Subagent 只在有效 work phase 写入；请返回 Coordinator 修复状态")
             confirmation_reasons.append("当前不是有效的 work phase")
         else:
             task = _task_for_action(project_root, context, payload)
             if task is None or task.status != "working":
-                if agent_id:
+                if restricted_agent:
                     return Decision(False, "Subagent 未认领 working active Task；请返回 Coordinator")
                 confirmation_reasons.append("Agent 未认领处于 working 的 active Task")
             else:
@@ -773,7 +1079,7 @@ def _decide_bash(
                     if not any(_scope_matches(target, scope) for scope in task.scopes)
                 ]
                 if invalid_files:
-                    if agent_id:
+                    if restricted_agent:
                         return Decision(False, f"Subagent 写入超出 {task.id} Scope；请返回 Coordinator")
                     confirmation_reasons.append(
                         f"Bash 文件写入超出 {task.id} Scope"
@@ -809,11 +1115,12 @@ def decide_tool(project_root: Path, payload: dict[str, object]) -> Decision:
         return Decision(False, "tool_input 必须是对象")
     tool_input = raw_input
     path = _state_path(project_root, tool_input)
+    restricted_agent = _is_restricted_agent(payload)
 
     # Governance state is always repairable by the Coordinator, even when it
     # is missing or invalid. Subagents return structured results instead.
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and path in STATE_FILES:
-        if payload.get("agent_id"):
+        if restricted_agent:
             return Decision(False, "Subagent 不能修改治理文件；请返回 Coordinator")
         return Decision(True)
 
@@ -831,31 +1138,31 @@ def decide_tool(project_root: Path, payload: dict[str, object]) -> Decision:
         return Decision(True)
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
         if path is None:
-            if payload.get("agent_id"):
+            if restricted_agent:
                 return Decision(False, "Subagent 的写入必须位于已认领 Task Scope；请返回 Coordinator")
             return Decision(True, "写入目标不在项目内，请核对目标后确认", ask=True)
         if path == "CLAUDE.md" or path.startswith(CONTROL_PREFIXES):
-            if payload.get("agent_id"):
+            if restricted_agent:
                 return Decision(False, f"Subagent 不能修改控制面 {path}；请返回 Coordinator")
             return Decision(True, f"将修改 wali-0x3 控制面：{path}", ask=True)
         try:
             context = load_policy_context(project_root)
         except WorkStateError:
-            if payload.get("agent_id"):
+            if restricted_agent:
                 return Decision(False, "Subagent 无法读取有效工作状态；请返回 Coordinator 修复")
             return Decision(True, "工作状态不可读；继续写入需要确认", ask=True)
         if context.phase != "work":
             phase = context.phase
-            if payload.get("agent_id"):
+            if restricted_agent:
                 return Decision(False, f"Subagent 不能在 {phase} phase 修改实现；请返回 Coordinator")
             return Decision(True, f"{phase} phase 的实现写入需要确认：{path}", ask=True)
         task = _task_for_action(project_root, context, payload)
         if task is None or task.status != "working":
-            if payload.get("agent_id"):
+            if restricted_agent:
                 return Decision(False, "Subagent 未认领 working active Task；请返回 Coordinator")
             return Decision(True, "Agent 未认领处于 working 的 active Task；继续写入需要确认", ask=True)
         if not any(_scope_matches(path, scope) for scope in task.scopes):
-            if payload.get("agent_id"):
+            if restricted_agent:
                 return Decision(False, f"Subagent 写入超出 {task.id} Scope；请返回 Coordinator")
             return Decision(True, f"写入超出 {task.id} Scope：{path}", ask=True)
         return Decision(True)
@@ -865,16 +1172,19 @@ def decide_tool(project_root: Path, payload: dict[str, object]) -> Decision:
 
 
 def _decision_output(decision: Decision) -> None:
-    if decision.allowed and not decision.ask:
-        return
+    permission_decision = (
+        "ask" if decision.ask else "allow" if decision.allowed else "deny"
+    )
+    output: dict[str, object] = {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": permission_decision,
+    }
+    if decision.reason:
+        output["permissionDecisionReason"] = decision.reason
     print(
         json.dumps(
             {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "ask" if decision.ask else "deny",
-                    "permissionDecisionReason": decision.reason,
-                }
+                "hookSpecificOutput": output,
             },
             ensure_ascii=False,
         )

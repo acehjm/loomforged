@@ -33,13 +33,14 @@
 3. 检查真实代码以及 `svn status`、`svn diff --internal-diff`；调用前已有或来源不明的修改归用户所有。能从项目发现的答案不得询问用户。
 4. 按当前 phase 推进一个明确下一步；安全并发时它可以是一对 Scope 互斥的实现 Task。
 
-`define → work`、`work → verify`、`verify → done` 前分别运行：
+`define → work`、`work → verify` 前分别运行对应检查：
 
 ```text
 python3 .claude/hooks/wali_work.py check --checkpoint work
 python3 .claude/hooks/wali_work.py check --checkpoint verify
-python3 .claude/hooks/wali_work.py check --checkpoint done
 ```
+
+`verify → done` 在证据闭环后用一个 Work 编辑回合设置 `phase: done`、`active_task: none` 和最终 `outcome`，再立即运行 `python3 .claude/hooks/wali_work.py check --checkpoint done`。检查失败时继续修复，不得提前报告完成。
 
 多任务时可以按需运行 `frontier` 和 `parallel`。Work 可同时保留最多两个 `working` active Task，用逗号分隔；它们必须依赖已满足且 Scope 两两互斥。共享配置、lockfile、路由总表、生成代码或数据库迁移归一个 Task，或拆成后续串行 integration Task。依赖关系只是内部 WorkIndex，不是新的项目产物，也不要求单任务建立额外“图工程”。
 
@@ -59,14 +60,14 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 - Hook 对主会话的可恢复破坏性命令、外部写入、控制面修改和 active Task Scope 外实现写入请求当场确认。灾难性删除，以及 Subagent 的破坏性工作区命令或越过认领、Scope、控制面、SVN 调度边界会被拒绝并交回 Coordinator；主会话修复通道始终开放。
 - 外部写入不需要先修改 Goal 授权，实际调用由 PreToolUse 请求用户核对目标和影响。
 - Agent 与 Skill 调用本身不进入 WALI Policy。项目允许受信任 Skill 的 `!` 动态上下文命令；外部 Skill 在调用前必须审查来源与 `SKILL.md`，其后续 Bash/写入仍按普通工具处理。
-- `SubagentStart` 用 `session_id + agent_id + agent_type` 原子认领一个 Owner 匹配的 active Task，每次工具调用复核当前 Owner，`SubagentStop` 释放认领。认领只存在于系统临时目录，不写 Work、无心跳、无长期锁。异常遗留 claim 由 Coordinator 在所有实现 Agent 停止后执行 `wali_work.py clear-claims` 清理。
-- Coordinator 是 Goal/Spec/Work/Handoff 的唯一写入者。实现、审查和测试 Agent 只返回结构化结果；SVN add/delete/move/commit 由 Coordinator 串行处理。
+- `SubagentStart` 用 `session_id + agent_id + agent_type` 原子认领一个 Owner 匹配的 active Task，每次工具调用复核当前 Owner，`SubagentStop` 释放认领。认领只存在于系统临时目录，不写 Work、无心跳、无长期锁。异常遗留 claim 由 Coordinator 在所有实现 Agent 停止后执行 `wali_work.py clear-claims --all-agents-stopped` 清理；实现 Agent 无权调用该命令。
+- Coordinator 是 Goal/Spec/Work/Handoff 的唯一写入者。实现、审查和测试 Agent 只返回结构化结果；所有 SVN 工作副本与远端调度由 Coordinator 串行处理。
 - PostToolUse 发现状态不完整时只提示，不阻断后续修复。`goal.md`、`spec.md`、`work.md` 和 `handoff.md` 永远保留修复通道。
 - Stop 只在 `stop_intent: handoff` 时检查可恢复交接；普通停止不因任务未完成或缺少 handoff 而阻断。
 
 ## 角色
 
-主会话承担 Coordinator。小而连续的工作由主会话完成；独立实现、审查或测试确有收益时才使用相应 Agent。最多同时运行两个实现 Agent。默认不启用 Agent Teams、心跳或 idle 监督；只使用轻量的 Subagent 启停认领 Hook。
+项目默认启动 `wali-0x3` Agent，由它在主会话承担 Coordinator。小而连续的工作由主会话完成；独立实现、审查或测试确有收益时才使用相应 Agent。最多同时运行两个实现 Agent。默认不启用 Agent Teams、心跳或 idle 监督；只使用轻量的 Subagent 启停认领 Hook。
 
 - Backend Dev：依据 implementation-ready Spec 自主实现已认领的后端 Task，并返回自检证据。
 - Frontend Dev：依据已确认的前后端 Seam 实现已认领的 UI/交互 Task，并返回自检证据。

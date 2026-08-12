@@ -1168,6 +1168,13 @@ def validate_state(state: WorkState) -> list[str]:
                 f"working Task {task.id} 的依赖尚未 done：{', '.join(incomplete_dependencies)}"
             )
     active_tasks = [task for task in state.tasks if task.id in active_task_set]
+    if len(active_tasks) > 1 and any(
+        task.owner not in IMPLEMENTATION_AGENT_TYPES for task in active_tasks
+    ):
+        reasons.append(
+            "双 active Task 只能交给 backend-dev 或 frontend-dev 实现 Agent；"
+            "coordinator Task 必须串行"
+        )
     for task in active_tasks:
         if state.phase == "work" and task.status not in {"working", "review"}:
             reasons.append(f"work phase 的 active Task {task.id} 必须是 working 或 review")
@@ -1206,7 +1213,9 @@ def safe_parallel_pairs(state: WorkState) -> tuple[tuple[Task, Task], ...]:
     return tuple(
         (left, right)
         for left, right in itertools.combinations(frontier(state), 2)
-        if not scopes_overlap(left.scopes, right.scopes)
+        if left.owner in IMPLEMENTATION_AGENT_TYPES
+        and right.owner in IMPLEMENTATION_AGENT_TYPES
+        and not scopes_overlap(left.scopes, right.scopes)
     )
 
 
@@ -1289,7 +1298,7 @@ def _run_claim_hook(project_root: Path) -> int:
                 f"WALI 已为你原子认领 {task.id}（{task.title}）。"
                 f"只修改 Scope: {', '.join(task.scopes)}。"
                 "不修改 goal.md、spec.md、work.md 或 handoff.md，"
-                "不执行 SVN add/delete/move/commit。"
+                "不执行任何 SVN 工作副本或远端调度。"
                 "完成后返回 Task ID、修改路径、测试命令/结果、Evidence、阻塞项和 ready_for_review。"
             )
         print(
@@ -1341,7 +1350,8 @@ def main() -> int:
     subparsers.add_parser("parallel")
     subparsers.add_parser("claim-hook")
     subparsers.add_parser("release-hook")
-    subparsers.add_parser("clear-claims")
+    clear_parser = subparsers.add_parser("clear-claims")
+    clear_parser.add_argument("--all-agents-stopped", action="store_true")
     args = parser.parse_args()
     root = args.project_root.resolve()
     if args.command == "check":
@@ -1351,6 +1361,12 @@ def main() -> int:
     if args.command == "release-hook":
         return _run_release_hook(root)
     if args.command == "clear-claims":
+        if not args.all_agents_stopped:
+            print(
+                "拒绝清理 Task claim：请先确认所有实现 Agent 已停止，"
+                "再显式传入 --all-agents-stopped"
+            )
+            return 2
         print(f"已清理 {clear_agent_claims(root)} 个临时 Task claim")
         return 0
     try:

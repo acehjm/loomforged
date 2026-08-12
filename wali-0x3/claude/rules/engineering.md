@@ -13,7 +13,7 @@ paths:
 - 不加入当前 Goal/Spec 没有证明需要的抽象、兼容层或额外产物。
 - 不删除、跳过或弱化测试，不吞掉错误，不伪造 Evidence。
 - 外部写入在实际执行时获得用户确认，不要求预先修改 Goal 授权。
-- Goal/Spec/Work/Handoff 只由 Coordinator 写入。实现 Agent 只返回结构化结果且不执行 SVN add/delete/move/commit，由 Coordinator 核对并串行处理。
+- Goal/Spec/Work/Handoff 只由 Coordinator 写入。实现 Agent 只返回结构化结果且不执行任何 SVN 工作副本或远端调度，由 Coordinator 核对并串行处理。
 - `goal.md`、`spec.md` 和 `work.md` 是唯一常驻治理状态；普通任务不创建图、第二份 Spec、Todo、Issue 或进度副本。
 - Define 期间先在对话中综合 Goal+Spec；除非用户要求保存草案或真实 handoff，确认前不把推测或中间结果逐步写入治理文件。
 - 可发现的问题先自行查证；`May decide` 内自主选择并继续，只有 `Must ask` 且穷尽安全查证后才打断用户。

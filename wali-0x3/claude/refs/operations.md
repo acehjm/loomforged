@@ -28,7 +28,7 @@ Task 状态：`pending → working → review → done`；无法推进时可用 
 
 Task 的 Scope 必须是明确项目相对路径。Work 最多同时列出两个 active Task，二者依赖必须已满足且 Scope 互斥。实现 Agent 通过启停 Hook 认领 Owner 匹配的 Task，只返回结构化结果；Coordinator 核对真实差异后批量写 Work。实现者留下自检 Evidence 后进入 review；独立 Verifier 验证后才能 done。多任务依赖只在 WorkIndex 中计算，不创建图文件。
 
-异常退出且 Stop Hook 未释放 claim 时，Coordinator 等其他实现 Agent 全部停止后运行 `wali_work.py clear-claims`，再重新分派。不要在实现 Agent 运行时清理认领。
+异常退出且 Stop Hook 未释放 claim 时，Coordinator 等其他实现 Agent 全部停止后运行 `wali_work.py clear-claims --all-agents-stopped`，再重新分派。该参数是对“全部停止”的显式确认；不要在实现 Agent 运行时清理认领。
 
 ## 恢复与交接
 

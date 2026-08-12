@@ -14,7 +14,8 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("wali-doctor.py")
 PROJECT_ROOT = SCRIPT.parents[2]
 START_SKILL = PROJECT_ROOT / "claude" / "skills" / "wali-start" / "SKILL.md"
-COORDINATOR = PROJECT_ROOT / "claude" / "agents" / "coordinator.md"
+WALI_AGENT = PROJECT_ROOT / "claude" / "agents" / "wali-0x3.md"
+INSPECT_SKILL = PROJECT_ROOT / "claude" / "skills" / "wali-inspect" / "SKILL.md"
 
 
 class WaliDoctorLightTest(unittest.TestCase):
@@ -50,9 +51,15 @@ class WaliDoctorLightTest(unittest.TestCase):
         frontend = (PROJECT_ROOT / "claude" / "agents" / "frontend-dev.md").read_text(encoding="utf-8")
         reviewer = (PROJECT_ROOT / "claude" / "agents" / "reviewer.md").read_text(encoding="utf-8")
         tester = (PROJECT_ROOT / "claude" / "agents" / "tester.md").read_text(encoding="utf-8")
-        coordinator = COORDINATOR.read_text(encoding="utf-8")
+        wali_agent = WALI_AGENT.read_text(encoding="utf-8")
+        settings = json.loads(
+            (PROJECT_ROOT / "claude" / "settings.json").read_text(encoding="utf-8")
+        )
 
         self.assertFalse((PROJECT_ROOT / "claude" / "agents" / "developer.md").exists())
+        self.assertFalse((PROJECT_ROOT / "claude" / "agents" / "coordinator.md").exists())
+        self.assertEqual(settings.get("agent"), "wali-0x3")
+        self.assertIn("name: wali-0x3", wali_agent)
         self.assertIn("name: backend-dev", backend)
         self.assertIn("name: frontend-dev", frontend)
         self.assertIn("不自行更新 Work", backend)
@@ -61,12 +68,12 @@ class WaliDoctorLightTest(unittest.TestCase):
         self.assertIn("tools: Read, Glob", tester)
         self.assertIn("不修改", reviewer)
         self.assertIn("不修改", tester)
-        self.assertIn("backend-dev", coordinator)
-        self.assertIn("frontend-dev", coordinator)
-        self.assertIn("最多两个", coordinator)
+        self.assertIn("backend-dev", wali_agent)
+        self.assertIn("frontend-dev", wali_agent)
+        self.assertIn("最多两个", wali_agent)
 
         for name in (
-            "coordinator",
+            "wali-0x3",
             "architect",
             "backend-dev",
             "frontend-dev",
@@ -96,9 +103,9 @@ class WaliDoctorLightTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory) / "project"
             shutil.copytree(PROJECT_ROOT, project)
-            coordinator = project / "claude" / "agents" / "coordinator.md"
-            coordinator.write_text(
-                coordinator.read_text(encoding="utf-8").replace("## 身份", "## 简介"),
+            wali_agent = project / "claude" / "agents" / "wali-0x3.md"
+            wali_agent.write_text(
+                wali_agent.read_text(encoding="utf-8").replace("## 身份", "## 简介"),
                 encoding="utf-8",
             )
 
@@ -106,7 +113,16 @@ class WaliDoctorLightTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("身份契约", result.stdout)
-            self.assertIn("coordinator.md", result.stdout)
+            self.assertIn("wali-0x3.md", result.stdout)
+
+    def test_done_contract_persists_terminal_state_before_final_check(self) -> None:
+        skill = INSPECT_SKILL.read_text(encoding="utf-8")
+
+        terminal = "先在同一编辑回合将 phase 设为 `done`"
+        final_check = "再立即运行 `wali_work.py check --checkpoint done`"
+        self.assertIn(terminal, skill)
+        self.assertIn(final_check, skill)
+        self.assertLess(skill.index(terminal), skill.index(final_check))
 
     def test_doctor_rejects_incomplete_hook_matchers_and_layout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

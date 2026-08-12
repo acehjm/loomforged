@@ -164,6 +164,12 @@ class WaliLivenessTest(unittest.TestCase):
     def policy(self, payload: dict[str, object], command: str = "hook") -> subprocess.CompletedProcess[str]:
         return self.run_hook(POLICY, payload, command)
 
+    def assert_policy_allowed(self, result: subprocess.CompletedProcess[str]) -> None:
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(output["hookEventName"], "PreToolUse")
+        self.assertEqual(output["permissionDecision"], "allow")
+
     def test_common_git_bash_and_svn_read_commands_do_not_require_registration(self) -> None:
         commands = (
             "pwd && rg --files",
@@ -184,8 +190,7 @@ class WaliLivenessTest(unittest.TestCase):
                     }
                 )
 
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, "")
+                self.assert_policy_allowed(result)
 
     def test_missing_control_state_does_not_block_local_diagnostics(self) -> None:
         (self.state / "goal.md").unlink()
@@ -199,8 +204,7 @@ class WaliLivenessTest(unittest.TestCase):
             }
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+        self.assert_policy_allowed(result)
 
     def test_missing_work_file_can_be_created_through_the_repair_channel(self) -> None:
         (self.state / "work.md").unlink()
@@ -216,8 +220,7 @@ class WaliLivenessTest(unittest.TestCase):
             }
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+        self.assert_policy_allowed(result)
 
     def test_missing_spec_file_can_be_created_through_the_repair_channel(self) -> None:
         spec_path = self.state / "spec.md"
@@ -234,8 +237,7 @@ class WaliLivenessTest(unittest.TestCase):
             }
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+        self.assert_policy_allowed(result)
 
     def test_post_hook_warning_never_closes_the_state_repair_channel(self) -> None:
         work_path = self.state / "work.md"
@@ -249,7 +251,7 @@ class WaliLivenessTest(unittest.TestCase):
             },
         }
         pre = self.policy(partial_payload)
-        self.assertEqual(pre.stdout, "", pre.stdout)
+        self.assert_policy_allowed(pre)
 
         work_path.write_text(
             work_path.read_text(encoding="utf-8").replace(
@@ -276,7 +278,7 @@ class WaliLivenessTest(unittest.TestCase):
                 },
             }
         )
-        self.assertEqual(repair.stdout, "", repair.stdout)
+        self.assert_policy_allowed(repair)
 
     def test_normal_stop_does_not_require_a_handoff_or_completed_work(self) -> None:
         result = self.run_hook(
