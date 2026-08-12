@@ -20,7 +20,7 @@ status: implemented
 ### 稳定定义与运行状态分离
 
 - `goal.md` 保存稳定的目标、范围和验收契约。
-- `spec.md` 保存由代码事实支撑的稳定实现契约和自主决策边界。
+- `spec.md` 保存由代码事实支撑的行为场景、稳定实现契约和自主决策边界。
 - `work.md` 保存会变化的 Task、Issue、Acceptance 和 Evidence。
 - `handoff.md` 只在真实交接时生成。
 
@@ -57,7 +57,13 @@ waiting_for: none
 outcome: none
 ```
 
-因此 Task 或阶段切换只需修改 Work，不会连带重写稳定 Goal/Spec。Developer 的实现接口是 Goal 的 why/what、Spec 的 Current/Target Behavior、Design/Verification Mapping 和 Autonomous Decision Contract；Work 只提供当前游标。Policy 内部实现不应把额外锁、摘要、代次或能力边暴露给每个调用者。
+因此 Task 或阶段切换只需修改 Work，不会连带重写稳定 Goal/Spec。Developer 的实现接口是 Goal 的 why/what、Spec 的 Current/Target Behavior、Behavior Scenarios、Design/Verification Mapping 和 Autonomous Decision Contract；Work 只提供当前游标。Policy 内部实现不应把额外锁、摘要、代次或能力边暴露给每个调用者。
+
+### Spec 编译与持久化
+
+Define 的发现、综合、阻塞问题和 Goal+Spec 确认包都在对话与当前上下文中完成。默认不使用三份治理文件作为思考草纸；用户明确确认后，在一个编辑回合中写入彼此一致的 Goal、implementation-ready Spec 和 active Work。只有用户要求保存草案或真实跨会话 handoff 才在确认前持久化 define/draft 状态。
+
+Spec 编译借鉴 `to-spec` 的 Problem/Solution、Implementation Decisions、Testing Decisions 和 Out of Scope，但不默认发布 Issue 或生成第二份 PRD。冗长 User Stories 被替换为直连 AC 的 Given/When/Then Behavior Scenarios；Verification Mapping 还必须指向现有、最高且可定位的测试 Seam。新 Seam 只在改变公开行为或引入高代价接口时进入 `Must ask`。
 
 ## 3. 深模块
 
@@ -92,7 +98,7 @@ Stop 的默认接口是 allow。只有调用者显式设置 `stop_intent: handof
 
 完整关系校验发生在：
 
-- Goal+Spec 确认并进入 work 前。
+- Goal+Spec 确认后、一次性持久化并进入 work 前。
 - 实现交给独立验证前。
 - Goal 完成前。
 
@@ -107,7 +113,7 @@ Spec 把“何时问用户”变成显式接口，而不是让每个 Agent 临�
 - `Must not`：扩大业务范围、弱化验证、覆盖用户修改或伪造事实。
 - `If blocked`：先从代码、测试、配置、历史和文档取证，只带一个真正阻塞的问题回来。
 
-用户确认 Goal+Spec 后，Coordinator 自动推进 Task 和检查点。新的代码事实若只修正技术映射，可在契约内更新 Spec 并继续；改变 Goal/AC 时才返回 define。这样交互次数由真实决策点决定，而不是由 Task 数量决定。
+用户确认 Goal+Spec 后，Coordinator 自动推进 Task 和检查点。新的代码事实若只修正行为场景或技术映射，只在阶段检查点批量更新 Spec 并继续；改变 Goal/AC 时才返回 define。这样交互次数由真实决策点决定，而不是由 Task 数量决定。
 
 ## 6. 多任务适用条件
 

@@ -9,7 +9,7 @@ disable-model-invocation: true
 3. 只有 `stop_intent: handoff` 时才读取 `handoff.md`。核对 Goal ID、phase、active task、时间、Current State 和 Next Step；不接受与实时状态冲突的游标。
 4. 恢复开始后将 `stop_intent` 改回 `continue`。普通会话不维护 handoff。
 5. 按 phase 推进：
-   - `define`：继续从代码事实编译或确认 Goal+Spec，只询问无法自行发现的阻塞问题。
+   - `define`：根据当前对话、代码事实与已有 draft 重建 Goal+Spec 候选包，只询问无法自行发现的阻塞问题。不边探索边增量重写三份状态；用户确认后才一次性写入并进入 work，除非用户明确要求保存新草案。
    - `work`：依据 Autonomous Decision Contract 恢复 `active_task`；若 Task 已不再 `working`，优先修复 Work 状态，必要例外请求确认。
    - `verify`：独立审查和测试，默认不改实现；需要修复时优先把 Task/Issue 状态写回 `work.md` 后返回 `work`。
    - `paused`：只处理 `waiting_for` 指向的方向、验收或外部条件。

@@ -66,6 +66,12 @@ status: implementation-ready
 - Compatibility: 保持既有调用方和测试通过。
 - Non-goals: 不修改无关模块。
 
+## Behavior Scenarios
+
+| Scenario | Given | When | Then | Acceptance |
+| --- | --- | --- | --- | --- |
+| 正常交付 | 有效输入且满足现有前置条件 | 调用方执行目标功能 | 功能产生可观察结果且保持兼容 | AC-001 |
+
 ## Design Mapping
 
 | ID | Requirement | Design | Affected Areas |
@@ -74,9 +80,9 @@ status: implementation-ready
 
 ## Verification Mapping
 
-| Acceptance | Coverage | Method |
-| --- | --- | --- |
-| AC-001 | integration | `python3 -m unittest -v` |
+| Acceptance | Seam | Coverage | Method |
+| --- | --- | --- | --- |
+| AC-001 | `src/feature/` 现有集成测试接口 | integration 正常交付 | `python3 -m unittest -v` |
 
 ## Autonomous Decision Contract
 

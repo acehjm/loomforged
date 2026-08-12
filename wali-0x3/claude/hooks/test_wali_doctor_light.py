@@ -13,6 +13,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("wali-doctor.py")
 PROJECT_ROOT = SCRIPT.parents[2]
+START_SKILL = PROJECT_ROOT / "claude" / "skills" / "wali-start" / "SKILL.md"
 
 
 class WaliDoctorLightTest(unittest.TestCase):
@@ -30,6 +31,15 @@ class WaliDoctorLightTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("FAIL", result.stdout)
         self.assertIn("goal.md + spec.md + work.md", result.stdout)
+
+    def test_start_skill_defers_persistence_until_goal_and_spec_confirmation(self) -> None:
+        skill = START_SKILL.read_text(encoding="utf-8")
+
+        self.assertIn("# 持久化时机", skill)
+        self.assertIn("确认前不修改", skill)
+        self.assertIn("一次性写入", skill)
+        self.assertIn("Behavior Scenarios", skill)
+        self.assertIn("不发布到 Issue Tracker", skill)
 
     def test_doctor_rejects_incomplete_hook_matchers_and_layout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

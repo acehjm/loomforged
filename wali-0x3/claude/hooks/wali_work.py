@@ -68,8 +68,18 @@ class Design:
 
 
 @dataclass(frozen=True)
+class BehaviorScenario:
+    name: str
+    given: str
+    when: str
+    then: str
+    acceptance_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Verification:
     acceptance_ids: tuple[str, ...]
+    seam: str
     coverage: str
     method: str
 
@@ -88,6 +98,7 @@ class Spec:
     status: str
     current_system: str
     target_behavior: str
+    scenarios: tuple[BehaviorScenario, ...]
     designs: tuple[Design, ...]
     verifications: tuple[Verification, ...]
     autonomy: AutonomyContract
@@ -397,6 +408,16 @@ def parse_spec(text: str) -> Spec:
         status=metadata["status"].lower(),
         current_system=section(text, "## Current System"),
         target_behavior=section(text, "## Target Behavior"),
+        scenarios=tuple(
+            BehaviorScenario(
+                name=row.get("Scenario", "").strip(),
+                given=row.get("Given", "").strip(),
+                when=row.get("When", "").strip(),
+                then=row.get("Then", "").strip(),
+                acceptance_ids=_references(row.get("Acceptance", ""), "AC"),
+            )
+            for row in table(text, "## Behavior Scenarios", "spec.md")
+        ),
         designs=tuple(
             Design(
                 id=row.get("ID", "").strip(),
@@ -409,6 +430,7 @@ def parse_spec(text: str) -> Spec:
         verifications=tuple(
             Verification(
                 acceptance_ids=_references(row.get("Acceptance", ""), "AC"),
+                seam=row.get("Seam", "").strip(),
                 coverage=row.get("Coverage", "").strip(),
                 method=row.get("Method", "").strip(),
             )
@@ -678,6 +700,8 @@ def validate_state(state: WorkState) -> list[str]:
         )
         if any(not _substantive(value, minimum=6) for value in target_values):
             reasons.append("spec.md 的 Target Behavior 缺少正常、异常或边界行为")
+        if not spec.scenarios:
+            reasons.append("spec.md 缺少 Behavior Scenarios")
         if not spec.designs:
             reasons.append("spec.md 缺少 Design Mapping")
         if not spec.verifications:
@@ -710,6 +734,32 @@ def validate_state(state: WorkState) -> list[str]:
     task_ids = {task.id for task in state.tasks}
     acceptance_ids = {acceptance.id for acceptance in state.acceptances}
     if spec.status == "implementation-ready":
+        scenario_names = [scenario.name for scenario in spec.scenarios]
+        for name in _duplicates(scenario_names):
+            reasons.append(f"Behavior Scenario 名称重复：{name}")
+        scenario_acceptances: set[str] = set()
+        for scenario in spec.scenarios:
+            if any(
+                not _substantive(value, minimum=4)
+                for value in (scenario.name, scenario.given, scenario.when, scenario.then)
+            ):
+                reasons.append(
+                    f"Behavior Scenario {scenario.name or '未命名'} 缺少具体 Given/When/Then"
+                )
+            if not scenario.acceptance_ids:
+                reasons.append(
+                    f"Behavior Scenario {scenario.name or '未命名'} 没有关联 Acceptance Criterion"
+                )
+            for acceptance_id in scenario.acceptance_ids:
+                if acceptance_id not in criterion_ids:
+                    reasons.append(
+                        f"Behavior Scenario {scenario.name or '未命名'} 引用不存在的 {acceptance_id}"
+                    )
+                else:
+                    scenario_acceptances.add(acceptance_id)
+        for acceptance_id in sorted(criterion_ids - scenario_acceptances):
+            reasons.append(f"{acceptance_id} 没有 Behavior Scenario")
+
         design_ids = [design.id for design in spec.designs]
         for identifier in _duplicates(design_ids):
             reasons.append(f"Design ID 重复：{identifier}")
@@ -747,6 +797,10 @@ def validate_state(state: WorkState) -> list[str]:
                     oracle = criterion_methods[acceptance_id]
                     if _preserves_oracle(verification.method, oracle):
                         preserved_oracles.add(acceptance_id)
+            if not _substantive(verification.seam, minimum=6) or not _has_locator(
+                verification.seam
+            ):
+                reasons.append("Verification Mapping 缺少具体且可定位的 Seam")
             if not _has_evidence(verification.coverage) or not _has_evidence(
                 verification.method
             ):

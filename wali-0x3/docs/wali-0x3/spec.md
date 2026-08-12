@@ -6,7 +6,7 @@ status: draft
 
 # Implementation-Ready Spec
 
-> `spec.md` 把已确认 Goal 编译为 Developer 可以连续执行的稳定实现契约。Define 时形成；进入 work 后不记录进度。只有代码事实证明设计不可行，或目标行为、接口、数据、安全、迁移与验证策略发生实质变化时才更新。
+> `spec.md` 把已确认 Goal 编译为 Developer 可以连续执行的稳定实现契约。当前 `draft` 文件只是格式种子；普通 Define 的候选 Spec 留在对话与上下文中，Goal+Spec 经用户明确确认后才与 Work 一次性持久化。进入 work 后 Spec 不记录进度；只有不影响 Goal、用户可观察行为或 AC，且未触发 `Must ask` 的代码事实偏差，才在检查点批量修正。Goal、用户可观察行为或 AC 实质变化必须返回 define 并重新确认。
 
 以下二级标题、表头和 Autonomous Decision Contract 的四个英文标签是检查器接口，保留原样；正文可使用项目语言。
 
@@ -24,6 +24,13 @@ status: draft
 - Compatibility: 待写必须保持及允许改变的行为。
 - Non-goals: 待写明确不实现的相邻需求。
 
+## Behavior Scenarios
+
+| Scenario | Given | When | Then | Acceptance |
+| --- | --- | --- | --- | --- |
+
+用简短、可观察的 Given/When/Then 代替冗长 User Stories。每个 `AC-XXX` 至少由一个场景覆盖；正常、错误、边界和兼容场景按实际风险填写，不为凑数量重复 Target Behavior。
+
 ## Design Mapping
 
 | ID | Requirement | Design | Affected Areas |
@@ -33,10 +40,10 @@ status: draft
 
 ## Verification Mapping
 
-| Acceptance | Coverage | Method |
-| --- | --- | --- |
+| Acceptance | Seam | Coverage | Method |
+| --- | --- | --- | --- |
 
-每个 `AC-XXX` 至少有一行并保留 Goal 中的 AC Method oracle。Coverage 说明测试层级与关键场景；Method 给出可执行命令或可复现步骤，不只写“测试通过”。每个 AC 还必须至少关联一个 Work Task。
+每个 `AC-XXX` 至少有一行并保留 Goal 中的 AC Method oracle。Seam 指向现有的、能看到最完整用户行为的最高测试接缝，并用路径、命令或接口定位。Coverage 说明测试层级与关键 Behavior Scenario；Method 给出可执行命令或可复现步骤，不只写“测试通过”。每个 AC 还必须至少关联一个 Work Task。
 
 ## Autonomous Decision Contract
 

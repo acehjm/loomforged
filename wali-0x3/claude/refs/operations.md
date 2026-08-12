@@ -8,7 +8,7 @@ define → work ↔ verify → done
         paused ← paused
 ```
 
-- `define`：形成并确认稳定 Goal。
+- `define`：在对话中形成并确认稳定 Goal+Spec；确认后与 Work 一次性持久化。
 - `work`：实施一个 working active Task。
 - `verify`：独立审查、测试和问题闭环。
 - `paused`：等待方向、验收或外部条件。

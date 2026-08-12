@@ -7,7 +7,7 @@
 只维护三份常驻状态：
 
 - `docs/wali-0x3/goal.md`：稳定的目标、范围、Requirement 和 Acceptance Criterion。
-- `docs/wali-0x3/spec.md`：基于代码事实的目标行为、Design/Verification Mapping 和 Autonomous Decision Contract。
+- `docs/wali-0x3/spec.md`：基于代码事实的目标行为、Behavior Scenarios、Design/Verification Mapping 和 Autonomous Decision Contract。
 - `docs/wali-0x3/work.md`：会变化的 Acceptance、Task、Issue 和 Evidence。
 
 `handoff.md` 不是常驻状态源。只有当前会话确实需要中断并由后续会话恢复时，才通过 `/wali-handoff` 创建或覆盖它。普通停止不写 handoff，也不刷新摘要。
@@ -45,12 +45,12 @@ python3 .claude/hooks/wali_work.py check --checkpoint done
 
 ## Spec 与自主执行
 
-- `/wali-start` 从用户需求和代码证据生成 Goal+Spec；只把无法自行发现且会改变结果的问题集中询问一次。
-- 用户一次确认 Goal+Spec 后，Spec 标为 `implementation-ready`，Coordinator 立即连续推进 Work、验证、修复和下一 Task，不逐步索取许可。
-- Developer 通过 Spec 的 Current/Target Behavior、Design Mapping、Verification Mapping 和 Autonomous Decision Contract 工作。
+- `/wali-start` 从用户需求和代码证据在对话中综合 Goal+Spec；只把无法自行发现且会改变结果的问题集中询问一次，确认前不修改 Goal/Spec/Work。
+- 用户一次确认 Goal+Spec 后，Coordinator 才一次性持久化三份状态，将 Spec 标为 `implementation-ready`，并立即连续推进 Work、验证、修复和下一 Task，不逐步索取许可。仅用户明确要求保存草案或真实 handoff 例外。
+- Developer 通过 Spec 的 Current/Target Behavior、Behavior Scenarios、Design Mapping、含最高现有测试 Seam 的 Verification Mapping 和 Autonomous Decision Contract 工作。
 - `May decide` 内采用最符合现有项目约定、最小且可逆的方案并继续；不因命名、局部结构、内部数据结构或测试组织询问用户。
 - 只有 `Must ask` 且执行 `If blocked` 后仍无法安全推进才进入 paused。AC 未要求主观判断时，完成前不额外索取用户验收。
-- Spec 不记录进度。低层决策不逐项写入；新的代码事实使技术映射失准时可一次性修正并继续，目标行为或 AC 实质变化则返回 define 重新确认。
+- Spec 不记录进度。低层决策不逐项写入；新的代码事实使行为场景或技术映射失准时只在阶段检查点批量修正，目标行为或 AC 实质变化则返回 define 重新确认。
 
 ## Hook 边界
 

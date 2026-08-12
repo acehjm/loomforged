@@ -67,8 +67,8 @@ class WaliWorkCliTest(unittest.TestCase):
 
     def test_work_checkpoint_requires_design_and_verification_coverage(self) -> None:
         uncovered = SPEC.replace("| D-001 | R-001 |", "| D-001 | R-999 |").replace(
-            "| AC-001 | integration |",
-            "| AC-999 | integration |",
+            "| AC-001 | `src/feature/` 现有集成测试接口 |",
+            "| AC-999 | `src/feature/` 现有集成测试接口 |",
         )
         self.write("spec.md", uncovered)
 
@@ -93,6 +93,55 @@ class WaliWorkCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("Current System", result.stdout)
         self.assertIn("Target Behavior", result.stdout)
+
+    def test_work_checkpoint_requires_behavior_scenarios_covering_every_ac(self) -> None:
+        without_scenarios = SPEC.replace(
+            "## Behavior Scenarios\n\n"
+            "| Scenario | Given | When | Then | Acceptance |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 正常交付 | 有效输入且满足现有前置条件 | 调用方执行目标功能 | "
+            "功能产生可观察结果且保持兼容 | AC-001 |\n\n",
+            "",
+        )
+        self.write("spec.md", without_scenarios)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Behavior Scenarios", result.stdout)
+        self.assertIn("AC-001", result.stdout)
+
+    def test_work_checkpoint_rejects_hollow_or_unlinked_behavior_scenarios(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace(
+                "| 正常交付 | 有效输入且满足现有前置条件 | 调用方执行目标功能 | "
+                "功能产生可观察结果且保持兼容 | AC-001 |",
+                "| 正常 | pending | 执行 | 完成 | AC-999 |",
+            ),
+        )
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Given/When/Then", result.stdout)
+        self.assertIn("引用不存在的 AC-999", result.stdout)
+        self.assertIn("AC-001 没有 Behavior Scenario", result.stdout)
+
+    def test_work_checkpoint_requires_a_concrete_verification_seam(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace(
+                "| AC-001 | `src/feature/` 现有集成测试接口 | integration 正常交付 |",
+                "| AC-001 | 现有最高的集成测试接口 | integration 正常交付 |",
+            ),
+        )
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Verification Mapping", result.stdout)
+        self.assertIn("Seam", result.stdout)
 
     def test_work_checkpoint_rejects_untraceable_evidence_and_vague_design(self) -> None:
         vague = SPEC.replace(
@@ -171,8 +220,9 @@ class WaliWorkCliTest(unittest.TestCase):
             "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | `src/feature/**` |",
             "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | `src/feature/**` |\n| D-002 | R-002 | 在相邻接口后实现完整行为并处理失败。 | `src/other/**` |",
         ).replace(
-            "| AC-001 | integration | `python3 -m unittest -v` |",
-            "| AC-001 | integration | `python3 -m unittest -v` |\n| AC-002 | integration | `python3 -m unittest -v` |",
+            "| AC-001 | `src/feature/` 现有集成测试接口 | integration 正常交付 | `python3 -m unittest -v` |",
+            "| AC-001 | `src/feature/` 现有集成测试接口 | integration 正常交付 | `python3 -m unittest -v` |\n"
+            "| AC-002 | `src/other/` 现有集成测试接口 | integration 相邻功能 | `python3 -m unittest -v` |",
         )
         uncovered_work = WORK.replace(
             "| AC-001 | pending | none | none |",

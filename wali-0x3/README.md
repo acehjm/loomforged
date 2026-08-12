@@ -44,11 +44,12 @@ WALI 只保留会直接提高交付可信度的治理：
 
 - 当前系统入口、真实行为、约束和代码证据。
 - 正常流程、错误与边界、兼容行为和 Non-goals。
+- 把 Given/When/Then 直接关联到 AC 的 Behavior Scenarios。
 - Requirement → Design → Affected Areas 映射。
-- AC → Coverage → Method 验证映射。
+- AC → 最高现有 Seam → Coverage → Method 验证映射。
 - Agent 可以自主决定、必须询问、不得执行和阻塞前先做什么。
 
-Spec 在 define 中与 Goal 一起形成和确认。进入 work 后不记录进度；低层实现选择不逐项追加。只有新的代码事实使技术映射失准时才自主修正，目标行为或 AC 实质变化则返回 define。
+Define 时的 Goal+Spec 候选包先留在对话与上下文中。除非用户明确要求保存草案或真实跨会话交接，确认前不修改三份状态；明确确认后才一次性写入 Goal、Spec 和 Work。进入 work 后 Spec 不记录进度；低层实现选择不逐项追加。只有新的代码事实使行为场景或技术映射失准时才在检查点批量修正，目标行为或 AC 实质变化则返回 define。
 
 ### `work.md`
 
@@ -68,7 +69,7 @@ Spec 在 define 中与 Goal 一起形成和确认。进入 work 后不记录进�
 ## 工作循环
 
 ```text
-define：从需求与代码事实生成并确认 Goal + Spec
+define：在对话中综合并确认 Goal + Spec，确认后一次持久化
    ↓
 work：实现一个 working Task
    ↓
@@ -107,7 +108,7 @@ python3 .claude/hooks/wali_work.py check --checkpoint verify
 python3 .claude/hooks/wali_work.py check --checkpoint done
 ```
 
-- 进入 work：Goal 已确认、Spec implementation-ready、没有 Open Questions，Requirement/AC 映射完整且至少有一个 Task。
+- 进入 work：Goal 已确认、Spec implementation-ready、没有 Open Questions，每个 AC 有 Behavior Scenario 和可定位测试 Seam，Requirement/AC 映射完整且至少有一个 Task。
 - 进入 verify：active Task 已 review 并有实现 Evidence。
 - 进入 done：所有 Task 和 AC 已完成，没有未关闭 blocker。
 
@@ -166,7 +167,9 @@ PostHook 只在治理状态写入后检查 Goal/Spec/Work 是否完整。发现�
 
 ## 最小交互原则
 
-`/wali-start` 先检查代码、测试、配置和项目资料。能自行发现的答案不询问用户；只把会改变结果且只有用户能决定的问题集中为一轮 1–3 个问题。没有阻塞问题时直接给出一次 Goal+Spec 确认包。
+`/wali-start` 先检查代码、测试、配置和项目资料。能自行发现的答案不询问用户；只把会改变结果且只有用户能决定的问题集中为一轮 1–3 个问题。没有阻塞问题时直接给出一次 Goal+Spec 确认包，此前不边综合边写文件。
+
+Spec 综合借鉴 Matt `to-spec` 的 Problem/Solution、Implementation Decisions、Testing Decisions 和 Out of Scope，但不默认发布 Issue，不创建第二份 PRD，也不用冗长 User Stories 复制 Acceptance。WALI 保留精确路径，用 Behavior Scenarios 表达可观察行为，并自主选择现有的最高测试 Seam；只有新 Seam 会改变公开行为或引入高代价时才询问用户。
 
 用户确认后，Agent 自动建立 Work、实现、测试、修复、独立验证并选择下一 Task。`May decide` 中的可逆低影响细节由 Agent 自主选择；只有用户可见语义、Acceptance 冲突、不可逆数据迁移、重大安全/费用风险或不可安全回滚的外部副作用才重新交互。
 
@@ -225,7 +228,7 @@ python3 -m unittest -v \
 
 ## 使用入口
 
-- `/wali-start <需求或资料>`：从需求与代码事实生成并确认 Goal+Spec，然后自动开始开发。
+- `/wali-start <需求或资料>`：在对话中从需求与代码事实综合 Goal+Spec，确认后与 Work 一次写入并自动开始开发。
 - `/wali-resume`：从 Goal、Spec、Work、真实差异和可选 handoff 恢复。
 - `/wali-inspect`：进入独立验证和问题闭环。
 - `/wali-handoff`：仅在确实需要跨会话恢复时创建游标。
