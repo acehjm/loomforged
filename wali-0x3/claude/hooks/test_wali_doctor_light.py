@@ -62,6 +62,21 @@ class WaliDoctorLightTest(unittest.TestCase):
         self.assertIn("frontend-dev", coordinator)
         self.assertIn("最多两个", coordinator)
 
+        for name in (
+            "coordinator",
+            "architect",
+            "backend-dev",
+            "frontend-dev",
+            "reviewer",
+            "tester",
+        ):
+            with self.subTest(agent=name):
+                definition = (
+                    PROJECT_ROOT / "claude" / "agents" / f"{name}.md"
+                ).read_text(encoding="utf-8")
+                self.assertIn("## 身份", definition)
+                self.assertIn("你是 wali-0x3", definition)
+
     def test_doctor_rejects_the_legacy_developer_agent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory) / "project"
@@ -73,6 +88,22 @@ class WaliDoctorLightTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("developer.md", result.stdout)
+
+    def test_doctor_rejects_an_agent_without_identity_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            shutil.copytree(PROJECT_ROOT, project)
+            coordinator = project / "claude" / "agents" / "coordinator.md"
+            coordinator.write_text(
+                coordinator.read_text(encoding="utf-8").replace("## 身份", "## 简介"),
+                encoding="utf-8",
+            )
+
+            result = self.run_doctor(project)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("身份契约", result.stdout)
+            self.assertIn("coordinator.md", result.stdout)
 
     def test_doctor_rejects_incomplete_hook_matchers_and_layout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

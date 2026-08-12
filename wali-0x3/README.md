@@ -166,6 +166,8 @@ PostHook 只在治理状态写入后检查 Goal/Spec/Work 是否完整。发现�
 
 ## 角色
 
+每个 Agent 定义都由三层组成：稳定的身份与判断立场、当前职责与边界、结构化输出契约。身份不是装饰性人设；它规定角色面对不完整证据和方案取舍时如何思考，拆分或精简角色时不得只保留权限清单。
+
 - Coordinator：唯一维护 Goal/Spec/Work/Handoff；一次确认后连续编排检查点、Task 与串行 SVN 集成。
 - Backend Dev：依据 implementation-ready Spec 实现已认领的后端 Task，返回路径、自检和 Evidence。
 - Frontend Dev：依据已确认的接口 Seam 实现已认领的 UI/交互 Task，返回路径、自检和 Evidence。

@@ -20,6 +20,14 @@ CORE_PROJECT_PATHS = (
     "docs/wali-0x3/spec.md",
     "docs/wali-0x3/work.md",
 )
+AGENT_NAMES = (
+    "coordinator",
+    "architect",
+    "backend-dev",
+    "frontend-dev",
+    "reviewer",
+    "tester",
+)
 CORE_CONTROL_PATHS = (
     "settings.json",
     "agents/coordinator.md",
@@ -56,6 +64,18 @@ def _layout(project_root: Path) -> Diagnostic:
     legacy = project_root / control / "agents" / "developer.md"
     if legacy.is_file():
         return Diagnostic("FAIL", "布局", f"不应保留遗留 Agent：{control}/agents/developer.md")
+    invalid_identities = []
+    for name in AGENT_NAMES:
+        path = project_root / control / "agents" / f"{name}.md"
+        definition = path.read_text(encoding="utf-8")
+        if "## 身份" not in definition or "你是 wali-0x3" not in definition:
+            invalid_identities.append(f"{control}/agents/{name}.md")
+    if invalid_identities:
+        return Diagnostic(
+            "FAIL",
+            "布局",
+            "缺少明确身份契约：" + ", ".join(invalid_identities),
+        )
     return Diagnostic("PASS", "布局", "goal.md + spec.md + work.md 控制面完整")
 
 
