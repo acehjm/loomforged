@@ -21,6 +21,7 @@ from pathlib import Path
 
 from wali_work import (
     GOAL_FILE,
+    SPEC_FILE,
     STATE_DIR,
     WORK_FILE,
     Goal,
@@ -34,7 +35,12 @@ from wali_work import (
 )
 
 
-STATE_FILES = {GOAL_FILE.as_posix(), WORK_FILE.as_posix(), (STATE_DIR / "handoff.md").as_posix()}
+STATE_FILES = {
+    GOAL_FILE.as_posix(),
+    SPEC_FILE.as_posix(),
+    WORK_FILE.as_posix(),
+    (STATE_DIR / "handoff.md").as_posix(),
+}
 CONTROL_PREFIXES = (".claude/", "claude/", ".svn/")
 LOCAL_SVN_MUTATIONS = {"add", "delete", "del", "remove", "rm", "move", "mv", "copy", "cp", "update", "up", "resolve"}
 REMOTE_SVN_MUTATIONS = {"commit", "ci", "lock", "unlock", "mkdir", "propset", "propdel", "import"}

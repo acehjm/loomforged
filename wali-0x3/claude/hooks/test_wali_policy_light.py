@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_wali_liveness import GOAL, WORK
+from test_wali_liveness import GOAL, SPEC, WORK
 
 
 SCRIPT = Path(__file__).with_name("wali_policy.py")
@@ -23,6 +23,7 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.state = self.root / "docs" / "wali-0x3"
         self.state.mkdir(parents=True)
         (self.state / "goal.md").write_text(GOAL, encoding="utf-8")
+        (self.state / "spec.md").write_text(SPEC, encoding="utf-8")
         (self.state / "work.md").write_text(WORK, encoding="utf-8")
 
     def tearDown(self) -> None:

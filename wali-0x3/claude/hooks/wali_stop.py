@@ -68,7 +68,7 @@ def handoff_reasons(project_root: Path) -> list[str]:
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
-            reasons.append(f"handoff.md 的 {key} 必须与当前 Goal/Work 一致")
+            reasons.append(f"handoff.md 的 {key} 必须与当前 Goal/Spec/Work 一致")
     if not _valid_timestamp(metadata.get("updated", "")):
         reasons.append("handoff.md 必须记录真实 updated 时间")
     if not _meaningful_section(text, "## Current State"):

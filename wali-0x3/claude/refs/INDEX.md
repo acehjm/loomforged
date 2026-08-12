@@ -9,6 +9,6 @@
 | Templates | `templates/INDEX.md` | 跨项目开发模板 | 当前 Task 场景匹配时 |
 | Compliance | `compliance/INDEX.md` | 代码检查基线 | Developer 自检或 Reviewer 审查时 |
 
-用户为具体项目提供的需求、接口、模块和约束保留在项目自己的 `docs/`；当前 Goal 采用的可执行结论写入 `goal.md`。Work 的状态、问题和证据写入 `work.md`。
+用户为具体项目提供的原始资料保留在项目自己的 `docs/`；采用的目标结论写入 `goal.md`，由代码事实支撑的实现契约写入 `spec.md`，运行状态、问题和证据写入 `work.md`。
 
 Agent 只加载与当前角色和任务直接相关的最小 Ref。Ref 是参考，不是 Skill，不需要形成额外 Work 关系。

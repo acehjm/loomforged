@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_wali_liveness import GOAL, WORK
+from test_wali_liveness import GOAL, SPEC, WORK
 
 
 SCRIPT = Path(__file__).with_name("wali_work.py")
@@ -21,6 +21,7 @@ class WaliWorkCliTest(unittest.TestCase):
         self.state = self.root / "docs" / "wali-0x3"
         self.state.mkdir(parents=True)
         self.write("goal.md", GOAL)
+        self.write("spec.md", SPEC)
         self.write("work.md", WORK)
 
     def tearDown(self) -> None:
@@ -42,6 +43,179 @@ class WaliWorkCliTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("状态检查通过", result.stdout)
+
+    def test_work_checkpoint_requires_an_implementation_ready_spec(self) -> None:
+        (self.state / "spec.md").unlink()
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("spec.md", result.stdout)
+        self.assertIn("implementation-ready", result.stdout)
+
+    def test_work_checkpoint_rejects_a_shallow_or_unresolved_spec(self) -> None:
+        shallow = SPEC.replace(
+            "- Entry points: `src/feature/`\n- Existing behavior: 目标功能尚未实现。\n- Constraints: 保持现有 feature 接口兼容。\n- Evidence: `src/feature/` 与 `python3 -m unittest -v`。",
+            "pending",
+        ).replace("- none", "- 需要用户决定接口语义")
+        self.write("spec.md", shallow)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Current System", result.stdout)
+        self.assertIn("Open Questions", result.stdout)
+
+    def test_work_checkpoint_requires_design_and_verification_coverage(self) -> None:
+        uncovered = SPEC.replace("| D-001 | R-001 |", "| D-001 | R-999 |").replace(
+            "| AC-001 | integration |",
+            "| AC-999 | integration |",
+        )
+        self.write("spec.md", uncovered)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("R-001 没有 Design Mapping", result.stdout)
+        self.assertIn("AC-001 没有 Verification Mapping", result.stdout)
+
+    def test_work_checkpoint_requires_concrete_current_and_target_behavior(self) -> None:
+        incomplete = SPEC.replace(
+            "- Evidence: `src/feature/` 与 `python3 -m unittest -v`。",
+            "- Evidence: pending",
+        ).replace(
+            "- Errors and edges: 非法输入返回明确错误，既有行为不回归。",
+            "- Errors and edges: pending",
+        )
+        self.write("spec.md", incomplete)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Current System", result.stdout)
+        self.assertIn("Target Behavior", result.stdout)
+
+    def test_work_checkpoint_rejects_untraceable_evidence_and_vague_design(self) -> None:
+        vague = SPEC.replace(
+            "- Evidence: `src/feature/` 与 `python3 -m unittest -v`。",
+            "- Evidence: `看过`",
+        ).replace(
+            "在现有 feature 接口后实现最小完整行为。",
+            "改代码",
+        )
+        self.write("spec.md", vague)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("可定位 Evidence", result.stdout)
+        self.assertIn("实现设计过于含糊", result.stdout)
+
+    def test_work_checkpoint_rejects_hollow_behavior_and_autonomy_contract(self) -> None:
+        hollow = (
+            SPEC.replace("目标功能尚未实现。", "正常")
+            .replace("保持现有 feature 接口兼容。", "兼容")
+            .replace("实现用户要求的功能并保持现有接口兼容。", "正常")
+            .replace("非法输入返回明确错误，既有行为不回归。", "处理")
+            .replace("保持既有调用方和测试通过。", "兼容")
+            .replace("不修改无关模块。", "无")
+            .replace(
+                "可逆、低影响并遵循现有接口和项目约定的实现细节、局部重构与测试组织。",
+                "自行",
+            )
+            .replace(
+                "用户可见语义变化、验收冲突、不可逆数据迁移、重大安全风险或新的外部副作用。",
+                "必要时",
+            )
+            .replace(
+                "扩大业务范围、弱化测试、覆盖用户修改或把假设伪装成事实。",
+                "别乱来",
+            )
+            .replace(
+                "先用代码、测试和文档消除不确定性；仅携带选项、证据和建议询问一个阻塞问题。",
+                "先看看",
+            )
+        )
+        self.write("spec.md", hollow)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Current System", result.stdout)
+        self.assertIn("Target Behavior", result.stdout)
+        self.assertIn("Autonomous Decision Contract", result.stdout)
+
+    def test_work_checkpoint_requires_verification_to_preserve_the_ac_oracle(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace(
+                "`python3 -m unittest -v` |",
+                "`printf pass # python3 -m unittest -v` |",
+            ),
+        )
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("AC-001", result.stdout)
+        self.assertIn("oracle", result.stdout)
+
+    def test_work_checkpoint_links_every_ac_and_design_area_to_work(self) -> None:
+        uncovered_goal = GOAL.replace(
+            "| R-001 | 功能可以工作 | AC-001 |",
+            "| R-001 | 功能可以工作 | AC-001 |\n| R-002 | 相邻功能可以工作 | AC-002 |",
+        ).replace(
+            "| AC-001 | 自动检查通过 | `python3 -m unittest -v` |",
+            "| AC-001 | 自动检查通过 | `python3 -m unittest -v` |\n| AC-002 | 相邻检查通过 | `python3 -m unittest -v` |",
+        )
+        uncovered_spec = SPEC.replace(
+            "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | `src/feature/**` |",
+            "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | `src/feature/**` |\n| D-002 | R-002 | 在相邻接口后实现完整行为并处理失败。 | `src/other/**` |",
+        ).replace(
+            "| AC-001 | integration | `python3 -m unittest -v` |",
+            "| AC-001 | integration | `python3 -m unittest -v` |\n| AC-002 | integration | `python3 -m unittest -v` |",
+        )
+        uncovered_work = WORK.replace(
+            "| AC-001 | pending | none | none |",
+            "| AC-001 | pending | none | none |\n| AC-002 | pending | none | none |",
+        ).replace("`src/feature/**`", "`src/unrelated/**`")
+        self.write("goal.md", uncovered_goal)
+        self.write("spec.md", uncovered_spec)
+        self.write("work.md", uncovered_work)
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("AC-002 没有 Task", result.stdout)
+        self.assertIn("D-001", result.stdout)
+        self.assertIn("Task Scope", result.stdout)
+
+    def test_work_checkpoint_rejects_task_scope_not_authorized_by_design(self) -> None:
+        self.write(
+            "work.md",
+            WORK.replace("`src/feature/**`", "`src/feature/**`, `src/unrelated/**`"),
+        )
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("src/unrelated/**", result.stdout)
+        self.assertIn("Design", result.stdout)
+
+    def test_work_checkpoint_rejects_same_prefix_but_different_globs(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace("`src/feature/**` |", "`src/feature/*.py` |"),
+        )
+        self.write(
+            "work.md",
+            WORK.replace("`src/feature/**`", "`src/feature/*.js`"),
+        )
+
+        result = self.run_cli("check", "--checkpoint", "work")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("src/feature/*.js", result.stdout)
+        self.assertIn("Design", result.stdout)
 
     def test_runtime_fields_live_in_work_not_the_stable_goal(self) -> None:
         goal_metadata = GOAL.split("---", 2)[1]
@@ -97,6 +271,10 @@ class WaliWorkCliTest(unittest.TestCase):
         self.assertIn("active_task", waiting.stdout)
 
     def test_frontier_uses_task_dependencies_without_a_persistent_graph(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace("`src/feature/**` |", "`src/feature/**`, `src/other/**` |"),
+        )
         work = WORK.replace(
             "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | developer | none |",
             "| T-001 | AC-001 | 实现功能 | done | none | `src/feature/**` | test exit 0 | developer | tester |",
@@ -114,6 +292,10 @@ class WaliWorkCliTest(unittest.TestCase):
         self.assertNotIn("T-001\t", result.stdout)
 
     def test_parallel_reports_only_disjoint_frontier_tasks(self) -> None:
+        self.write(
+            "spec.md",
+            SPEC.replace("`src/feature/**` |", "`src/feature/**`, `src/other/**` |"),
+        )
         work = WORK.replace("| T-001 | AC-001 | 实现功能 | working |", "| T-001 | AC-001 | 实现功能 | pending |")
         work = work.replace(
             "\n## Issues",

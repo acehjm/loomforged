@@ -30,9 +30,9 @@ Task 的 Scope 必须是明确项目相对路径。实现者留下自检 Evidenc
 
 ## 恢复与交接
 
-普通会话从 `goal.md + work.md + 真实差异` 恢复，不依赖 handoff。只有显式 `stop_intent: handoff` 时，`handoff.md` 才必须包含镜像 Goal ID、phase、active task、真实更新时间、Current State 和唯一 Next Step。
+普通会话从 `goal.md + spec.md + work.md + 真实差异` 恢复，不依赖 handoff。只有显式 `stop_intent: handoff` 时，`handoff.md` 才必须包含镜像 Goal ID、phase、active task、真实更新时间、Current State 和唯一 Next Step。
 
-PostHook 报告状态不完整时，`goal.md`、`work.md` 和 `handoff.md` 始终允许修复。不要通过回退用户代码恢复治理状态。
+PostHook 报告状态不完整时，`goal.md`、`spec.md`、`work.md` 和 `handoff.md` 始终允许修复。不要通过回退用户代码恢复治理状态。
 
 ## SVN
 

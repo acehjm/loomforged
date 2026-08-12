@@ -9,7 +9,7 @@ outcome: none
 
 # Work
 
-> `work.md` 保存会变化的执行状态。Goal 定义留在 `goal.md`；交接只在真正需要中断会话时写入 `handoff.md`。
+> `work.md` 只保存会变化的执行状态。Goal 的 why/what 留在 `goal.md`，稳定实现契约留在 `spec.md`；交接只在真正需要中断会话时写入 `handoff.md`。
 
 ## Acceptance
 

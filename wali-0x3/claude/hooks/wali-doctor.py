@@ -17,6 +17,7 @@ from wali_work import WorkStateError, load_state, validate_state
 CORE_PROJECT_PATHS = (
     "CLAUDE.md",
     "docs/wali-0x3/goal.md",
+    "docs/wali-0x3/spec.md",
     "docs/wali-0x3/work.md",
 )
 CORE_CONTROL_PATHS = (
@@ -51,7 +52,7 @@ def _layout(project_root: Path) -> Diagnostic:
     missing = [path for path in paths if not (project_root / path).is_file()]
     if missing:
         return Diagnostic("FAIL", "布局", "缺少：" + ", ".join(missing))
-    return Diagnostic("PASS", "布局", "goal.md + work.md 轻量控制面完整")
+    return Diagnostic("PASS", "布局", "goal.md + spec.md + work.md 控制面完整")
 
 
 def _hook_command(entry: dict[str, object]) -> tuple[str, tuple[str, ...]]:
@@ -118,7 +119,7 @@ def _state(project_root: Path) -> Diagnostic:
         return Diagnostic("FAIL", "状态", str(error))
     if reasons:
         return Diagnostic("FAIL", "状态", "；".join(reasons))
-    return Diagnostic("PASS", "状态", "goal.md 与 work.md 一致")
+    return Diagnostic("PASS", "状态", "goal.md、spec.md 与 work.md 一致")
 
 
 def _python() -> Diagnostic:

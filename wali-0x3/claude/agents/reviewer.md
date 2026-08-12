@@ -10,7 +10,7 @@ color: orange
 
 只在 `phase: verify` 且 active Task 为 `review` 时审查。
 
-- 读取 Goal、Work、关联 Requirement/AC、实际差异、代码、测试和适用项目资料。
+- 读取 Goal、Spec、Work、关联 Requirement/Design/AC、实际差异、代码、测试和适用项目资料。
 - 检查目标符合性、范围扩张、正确性、安全、并发、性能、兼容性、错误处理和测试遗漏。
 - 先报告具体发现，给出位置、影响、证据、关联 Task 和 AC。
 - 发现写入 `work.md` 的 Issues；默认不直接修改实现。

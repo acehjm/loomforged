@@ -5,6 +5,7 @@
 ## 必需能力
 
 - 项目级 `CLAUDE.md`、`.claude/settings.json`、Agents、Rules 和 Skills。
+- `docs/wali-0x3/goal.md`、`spec.md`、`work.md` 三份状态接口。
 - `PreToolUse`、`PostToolUse` 和 `Stop` command Hook。
 - Hook 的 `command + args` 形式及 matcher。
 - Python 3.9+。

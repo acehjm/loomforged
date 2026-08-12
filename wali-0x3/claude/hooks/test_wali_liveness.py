@@ -44,6 +44,53 @@ confirmed: true
 """
 
 
+SPEC = """---
+agent: wali-0x3
+goal_id: G-001
+status: implementation-ready
+---
+
+# Implementation-Ready Spec
+
+## Current System
+
+- Entry points: `src/feature/`
+- Existing behavior: 目标功能尚未实现。
+- Constraints: 保持现有 feature 接口兼容。
+- Evidence: `src/feature/` 与 `python3 -m unittest -v`。
+
+## Target Behavior
+
+- Normal flow: 实现用户要求的功能并保持现有接口兼容。
+- Errors and edges: 非法输入返回明确错误，既有行为不回归。
+- Compatibility: 保持既有调用方和测试通过。
+- Non-goals: 不修改无关模块。
+
+## Design Mapping
+
+| ID | Requirement | Design | Affected Areas |
+| --- | --- | --- | --- |
+| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | `src/feature/**` |
+
+## Verification Mapping
+
+| Acceptance | Coverage | Method |
+| --- | --- | --- |
+| AC-001 | integration | `python3 -m unittest -v` |
+
+## Autonomous Decision Contract
+
+- May decide: 可逆、低影响并遵循现有接口和项目约定的实现细节、局部重构与测试组织。
+- Must ask: 用户可见语义变化、验收冲突、不可逆数据迁移、重大安全风险或新的外部副作用。
+- Must not: 扩大业务范围、弱化测试、覆盖用户修改或把假设伪装成事实。
+- If blocked: 先用代码、测试和文档消除不确定性；仅携带选项、证据和建议询问一个阻塞问题。
+
+## Open Questions
+
+- none
+"""
+
+
 WORK = """---
 goal_id: G-001
 phase: work
@@ -82,6 +129,7 @@ class WaliLivenessTest(unittest.TestCase):
         self.state = self.root / "docs" / "wali-0x3"
         self.state.mkdir(parents=True)
         (self.state / "goal.md").write_text(GOAL, encoding="utf-8")
+        (self.state / "spec.md").write_text(SPEC, encoding="utf-8")
         (self.state / "work.md").write_text(WORK, encoding="utf-8")
 
     def tearDown(self) -> None:
@@ -158,6 +206,24 @@ class WaliLivenessTest(unittest.TestCase):
                 "tool_input": {
                     "file_path": str(self.state / "work.md"),
                     "content": WORK,
+                },
+            }
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_missing_spec_file_can_be_created_through_the_repair_channel(self) -> None:
+        spec_path = self.state / "spec.md"
+        spec_path.unlink()
+
+        result = self.policy(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": str(spec_path),
+                    "content": SPEC,
                 },
             }
         )

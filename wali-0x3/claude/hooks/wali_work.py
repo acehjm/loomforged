@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Load and validate wali-0x3's small, Markdown-backed work state.
+"""Load and validate wali-0x3's small, Markdown-backed delivery state.
 
-The persistent interface is deliberately limited to ``goal.md`` and
-``work.md``.  Dependency traversal is an internal implementation detail used
-at planning, verification, and completion checkpoints; callers do not have to
-maintain a separate graph artifact.
+The persistent interface is deliberately limited to stable ``goal.md`` and
+``spec.md`` contracts plus mutable ``work.md`` execution state. Dependency
+traversal is internal; callers do not maintain a separate graph artifact.
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import itertools
 import re
 import sys
@@ -20,6 +20,7 @@ from pathlib import Path
 
 STATE_DIR = Path("docs/wali-0x3")
 GOAL_FILE = STATE_DIR / "goal.md"
+SPEC_FILE = STATE_DIR / "spec.md"
 WORK_FILE = STATE_DIR / "work.md"
 PHASES = {"define", "work", "verify", "done", "paused"}
 WAIT_REASONS = {"none", "direction", "acceptance", "external"}
@@ -28,6 +29,7 @@ TASK_STATES = {"pending", "working", "review", "blocked", "done"}
 ACCEPTANCE_STATES = {"pending", "verified"}
 ISSUE_STATES = {"open", "fixing", "verify", "closed"}
 ISSUE_SEVERITIES = {"blocker", "high", "medium", "low"}
+SPEC_STATES = {"draft", "implementation-ready"}
 PLACEHOLDERS = {"", "-", "—", "none", "n/a", "pending", "待补充", "待验证", "待分配"}
 
 
@@ -55,6 +57,41 @@ class Criterion:
     id: str
     description: str
     method: str
+
+
+@dataclass(frozen=True)
+class Design:
+    id: str
+    requirement_ids: tuple[str, ...]
+    description: str
+    affected_areas: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Verification:
+    acceptance_ids: tuple[str, ...]
+    coverage: str
+    method: str
+
+
+@dataclass(frozen=True)
+class AutonomyContract:
+    may_decide: str
+    must_ask: str
+    must_not: str
+    if_blocked: str
+
+
+@dataclass(frozen=True)
+class Spec:
+    goal_id: str
+    status: str
+    current_system: str
+    target_behavior: str
+    designs: tuple[Design, ...]
+    verifications: tuple[Verification, ...]
+    autonomy: AutonomyContract
+    open_questions: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -92,6 +129,7 @@ class Issue:
 @dataclass(frozen=True)
 class WorkState:
     goal: Goal
+    spec: Spec
     work_goal_id: str
     phase: str
     active_task: str
@@ -215,6 +253,28 @@ def table(text: str, heading: str, name: str) -> list[dict[str, str]]:
     return rows
 
 
+def section(text: str, heading: str) -> str:
+    lines = text.splitlines()
+    start = next((index for index, line in enumerate(lines) if line.strip() == heading), None)
+    if start is None:
+        return ""
+    body: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.strip().startswith("## "):
+            break
+        body.append(line)
+    return "\n".join(body).strip()
+
+
+def _labelled_bullet(text: str, label: str) -> str:
+    match = re.search(
+        rf"^\s*-\s*{re.escape(label)}\s*:\s*(.+?)\s*$",
+        text,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    return match.group(1).strip() if match else ""
+
+
 def _references(value: str, prefix: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(re.findall(rf"\b{re.escape(prefix)}-\d+\b", value.upper())))
 
@@ -231,7 +291,49 @@ def _scopes(value: str) -> tuple[str, ...]:
 
 
 def _has_evidence(value: str) -> bool:
-    return value.strip().lower() not in PLACEHOLDERS
+    normalized = value.strip().lower()
+    return normalized not in PLACEHOLDERS and not re.match(
+        r"^(?:待|todo\b|tbd\b)", normalized, flags=re.IGNORECASE
+    )
+
+
+def _has_locator(value: str) -> bool:
+    """Return whether evidence names a file, command, URL, or clickable source."""
+
+    if not _has_evidence(value):
+        return False
+    code_locators = [
+        token
+        for token in re.findall(r"`([^`]+)`", value)
+        if re.search(r"[A-Za-z0-9_]", token)
+    ]
+    return bool(code_locators) or bool(
+        re.search(
+            r"\[[^\]]+\]\([^)]+\)|https?://|(?:^|\s)[\w.-]+/[\w.*?\[\]/-]+",
+            value,
+        )
+    )
+
+
+def _substantive(value: str, *, minimum: int = 8) -> bool:
+    normalized = re.sub(r"[\s`*_.,，。;；:：-]+", "", value)
+    return _has_evidence(value) and len(normalized) >= minimum
+
+
+def _normalized_method(value: str) -> str:
+    return re.sub(r"\s+", " ", value.replace("`", "").strip().lower())
+
+
+def _preserves_oracle(method: str, oracle: str) -> bool:
+    normalized_oracle = _normalized_method(oracle)
+    if not normalized_oracle:
+        return False
+    if _normalized_method(method) == normalized_oracle:
+        return True
+    return any(
+        _normalized_method(step) == normalized_oracle
+        for step in re.findall(r"`([^`]+)`", method)
+    )
 
 
 def parse_goal(text: str) -> Goal:
@@ -276,6 +378,50 @@ def parse_goal(text: str) -> Goal:
     )
 
 
+def parse_spec(text: str) -> Spec:
+    metadata = frontmatter(text, "spec.md")
+    required = {"agent", "goal_id", "status"}
+    missing = sorted(required - metadata.keys())
+    if missing:
+        raise WorkStateError("spec.md 缺少字段：" + ", ".join(missing))
+    if metadata["agent"] != "wali-0x3":
+        raise WorkStateError("spec.md 的 agent 必须是 wali-0x3")
+    autonomy_text = section(text, "## Autonomous Decision Contract")
+    open_questions = tuple(
+        line.lstrip()[1:].strip()
+        for line in section(text, "## Open Questions").splitlines()
+        if line.lstrip().startswith("-")
+    )
+    return Spec(
+        goal_id=metadata["goal_id"],
+        status=metadata["status"].lower(),
+        current_system=section(text, "## Current System"),
+        target_behavior=section(text, "## Target Behavior"),
+        designs=tuple(
+            Design(
+                id=row.get("ID", "").strip(),
+                requirement_ids=_references(row.get("Requirement", ""), "R"),
+                description=row.get("Design", "").strip(),
+                affected_areas=_scopes(row.get("Affected Areas", "")),
+            )
+            for row in table(text, "## Design Mapping", "spec.md")
+        ),
+        verifications=tuple(
+            Verification(
+                acceptance_ids=_references(row.get("Acceptance", ""), "AC"),
+                coverage=row.get("Coverage", "").strip(),
+                method=row.get("Method", "").strip(),
+            )
+            for row in table(text, "## Verification Mapping", "spec.md")
+        ),
+        autonomy=AutonomyContract(
+            may_decide=_labelled_bullet(autonomy_text, "May decide"),
+            must_ask=_labelled_bullet(autonomy_text, "Must ask"),
+            must_not=_labelled_bullet(autonomy_text, "Must not"),
+            if_blocked=_labelled_bullet(autonomy_text, "If blocked"),
+        ),
+        open_questions=open_questions,
+    )
 def parse_work(
     text: str,
 ) -> tuple[
@@ -350,11 +496,13 @@ def load_state(
     project_root: Path,
     *,
     goal_text: str | None = None,
+    spec_text: str | None = None,
     work_text: str | None = None,
 ) -> WorkState:
     goal = load_goal(project_root, text=goal_text)
+    spec = parse_spec(spec_text if spec_text is not None else _read(project_root / SPEC_FILE))
     parsed = parse_work(work_text if work_text is not None else _read(project_root / WORK_FILE))
-    return WorkState(goal, *parsed)
+    return WorkState(goal, spec, *parsed)
 
 
 def load_policy_context(project_root: Path) -> PolicyContext:
@@ -445,9 +593,37 @@ def scopes_overlap(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
     return False
 
 
+def scope_covers(scope: str, target: str) -> bool:
+    normalized_scope = scope.replace("\\", "/").strip().strip("`")
+    normalized_target = target.replace("\\", "/").strip().strip("`")
+    if normalized_scope == normalized_target:
+        return True
+    target_has_glob = any(token in normalized_target for token in ("*", "?", "["))
+    if normalized_scope.endswith("/**") and not any(
+        token in normalized_scope[:-3] for token in ("*", "?", "[")
+    ):
+        prefix = normalized_scope[:-3].rstrip("/")
+        target_prefix = _scope_prefix(normalized_target)
+        return bool(
+            prefix
+            and target_prefix
+            and (
+                target_prefix == prefix or target_prefix.startswith(prefix + "/")
+            )
+        )
+    if target_has_glob:
+        # Proving arbitrary glob-subset relationships is error-prone. Require
+        # equality unless a simple recursive-directory scope handled it above.
+        return False
+    if any(token in normalized_scope for token in ("*", "?", "[")):
+        return fnmatch.fnmatchcase(normalized_target, normalized_scope)
+    return normalized_target.startswith(normalized_scope.rstrip("/") + "/")
+
+
 def validate_state(state: WorkState) -> list[str]:
     reasons: list[str] = []
     goal = state.goal
+    spec = state.spec
     if state.phase not in PHASES:
         reasons.append(f"未知 phase：{state.phase or '空'}")
     if goal.id != "pending" and not re.fullmatch(r"G-\d+", goal.id):
@@ -472,6 +648,52 @@ def validate_state(state: WorkState) -> list[str]:
         reasons.append("只有 done phase 可以记录最终 outcome")
     if state.work_goal_id != goal.id:
         reasons.append("work.md 的 goal_id 必须与 goal.md 一致")
+    if spec.goal_id != goal.id:
+        reasons.append("spec.md 的 goal_id 必须与 goal.md 一致")
+    if spec.status not in SPEC_STATES:
+        reasons.append("spec.md status 必须是 draft 或 implementation-ready")
+    if state.phase != "define" and spec.status != "implementation-ready":
+        reasons.append(f"{state.phase} phase 要求 spec.md 为 implementation-ready")
+
+    if spec.status == "implementation-ready":
+        current_values = (
+            _labelled_bullet(spec.current_system, "Entry points"),
+            _labelled_bullet(spec.current_system, "Existing behavior"),
+            _labelled_bullet(spec.current_system, "Constraints"),
+            _labelled_bullet(spec.current_system, "Evidence"),
+        )
+        if (
+            not _has_locator(current_values[0])
+            or any(not _substantive(value, minimum=6) for value in current_values[1:3])
+            or not _has_evidence(current_values[3])
+        ):
+            reasons.append("spec.md 的 Current System 缺少代码事实与证据")
+        elif not _has_locator(current_values[3]):
+            reasons.append("spec.md 的 Current System 缺少可定位 Evidence")
+        target_values = (
+            _labelled_bullet(spec.target_behavior, "Normal flow"),
+            _labelled_bullet(spec.target_behavior, "Errors and edges"),
+            _labelled_bullet(spec.target_behavior, "Compatibility"),
+            _labelled_bullet(spec.target_behavior, "Non-goals"),
+        )
+        if any(not _substantive(value, minimum=6) for value in target_values):
+            reasons.append("spec.md 的 Target Behavior 缺少正常、异常或边界行为")
+        if not spec.designs:
+            reasons.append("spec.md 缺少 Design Mapping")
+        if not spec.verifications:
+            reasons.append("spec.md 缺少 Verification Mapping")
+        autonomy_values = (
+            spec.autonomy.may_decide,
+            spec.autonomy.must_ask,
+            spec.autonomy.must_not,
+            spec.autonomy.if_blocked,
+        )
+        if any(not _substantive(value, minimum=8) for value in autonomy_values):
+            reasons.append("spec.md 缺少完整 Autonomous Decision Contract")
+        if not spec.open_questions:
+            reasons.append("spec.md 的 Open Questions 必须显式写 none 或列出阻塞问题")
+        elif any(_has_evidence(question) for question in spec.open_questions):
+            reasons.append("implementation-ready spec.md 仍有未解决的 Open Questions")
 
     for label, identifiers in (
         ("Requirement", [item.id for item in goal.requirements]),
@@ -484,8 +706,55 @@ def validate_state(state: WorkState) -> list[str]:
             reasons.append(f"{label} ID 重复：{identifier}")
 
     criterion_ids = {criterion.id for criterion in goal.criteria}
+    requirement_ids = {requirement.id for requirement in goal.requirements}
     task_ids = {task.id for task in state.tasks}
     acceptance_ids = {acceptance.id for acceptance in state.acceptances}
+    if spec.status == "implementation-ready":
+        design_ids = [design.id for design in spec.designs]
+        for identifier in _duplicates(design_ids):
+            reasons.append(f"Design ID 重复：{identifier}")
+        designed_requirements: set[str] = set()
+        for design in spec.designs:
+            if not re.fullmatch(r"D-\d+", design.id):
+                reasons.append(f"Design ID 格式无效：{design.id or '空'}")
+            if not design.requirement_ids:
+                reasons.append(f"{design.id or 'Design'} 没有关联 Requirement")
+            for requirement_id in design.requirement_ids:
+                if requirement_id not in requirement_ids:
+                    reasons.append(f"{design.id} 引用不存在的 {requirement_id}")
+                else:
+                    designed_requirements.add(requirement_id)
+            if not _substantive(design.description):
+                reasons.append(f"{design.id or 'Design'} 的实现设计过于含糊")
+            if not design.affected_areas or any(
+                not _scope_prefix(area) for area in design.affected_areas
+            ):
+                reasons.append(f"{design.id or 'Design'} 缺少明确 Affected Areas")
+        for requirement_id in sorted(requirement_ids - designed_requirements):
+            reasons.append(f"{requirement_id} 没有 Design Mapping")
+
+        verified_acceptances: set[str] = set()
+        criterion_methods = {criterion.id: criterion.method for criterion in goal.criteria}
+        preserved_oracles: set[str] = set()
+        for verification in spec.verifications:
+            if not verification.acceptance_ids:
+                reasons.append("Verification Mapping 没有关联 Acceptance Criterion")
+            for acceptance_id in verification.acceptance_ids:
+                if acceptance_id not in criterion_ids:
+                    reasons.append(f"Verification Mapping 引用不存在的 {acceptance_id}")
+                else:
+                    verified_acceptances.add(acceptance_id)
+                    oracle = criterion_methods[acceptance_id]
+                    if _preserves_oracle(verification.method, oracle):
+                        preserved_oracles.add(acceptance_id)
+            if not _has_evidence(verification.coverage) or not _has_evidence(
+                verification.method
+            ):
+                reasons.append("Verification Mapping 缺少 Coverage 或 Method")
+        for acceptance_id in sorted(criterion_ids - verified_acceptances):
+            reasons.append(f"{acceptance_id} 没有 Verification Mapping")
+        for acceptance_id in sorted(criterion_ids - preserved_oracles):
+            reasons.append(f"{acceptance_id} 的 Verification Mapping 未保留 AC oracle")
     if state.phase in {"work", "verify"} and state.active_task not in task_ids:
         reasons.append(f"{state.phase} phase 的 active_task 必须引用真实 Task")
     if state.phase in {"define", "done"} and state.active_task != "none":
@@ -547,6 +816,59 @@ def validate_state(state: WorkState) -> list[str]:
                 reasons.append(f"{task.id} 已 done，但缺少 Evidence")
             if task.verifier in PLACEHOLDERS or task.verifier == task.owner:
                 reasons.append(f"{task.id} 已 done，但缺少独立 Verifier")
+    if spec.status == "implementation-ready":
+        tasks_by_acceptance = {
+            criterion_id: [
+                task for task in state.tasks if criterion_id in task.acceptance_ids
+            ]
+            for criterion_id in criterion_ids
+        }
+        for criterion_id, tasks in tasks_by_acceptance.items():
+            if not tasks:
+                reasons.append(f"{criterion_id} 没有 Task")
+
+        acceptances_by_requirement = {
+            requirement.id: set(requirement.acceptance_ids)
+            for requirement in goal.requirements
+        }
+        design_areas_by_acceptance: dict[str, set[str]] = {
+            criterion_id: set() for criterion_id in criterion_ids
+        }
+        for design in spec.designs:
+            design_acceptances = {
+                acceptance_id
+                for requirement_id in design.requirement_ids
+                for acceptance_id in acceptances_by_requirement.get(requirement_id, set())
+            }
+            for acceptance_id in design_acceptances:
+                design_areas_by_acceptance.setdefault(acceptance_id, set()).update(
+                    design.affected_areas
+                )
+            related_tasks = [
+                task
+                for task in state.tasks
+                if design_acceptances & set(task.acceptance_ids)
+            ]
+            for area in design.affected_areas:
+                if not any(
+                    scopes_overlap((area,), (scope,))
+                    for task in related_tasks
+                    for scope in task.scopes
+                ):
+                    reasons.append(
+                        f"{design.id} 的 Affected Area {area} 没有对应 Task Scope 覆盖"
+                    )
+        for task in state.tasks:
+            allowed_areas = {
+                area
+                for acceptance_id in task.acceptance_ids
+                for area in design_areas_by_acceptance.get(acceptance_id, set())
+            }
+            for scope in task.scopes:
+                if not any(scope_covers(area, scope) for area in allowed_areas):
+                    reasons.append(
+                        f"{task.id} 的 Task Scope {scope} 未被相关 Design Affected Areas 授权"
+                    )
     for issue in state.issues:
         if not re.fullmatch(r"I-\d+", issue.id):
             reasons.append(f"Issue ID 格式无效：{issue.id or '空'}")
@@ -661,6 +983,10 @@ def checkpoint_reasons(state: WorkState, checkpoint: str) -> list[str]:
 
 
 def _run_check(project_root: Path, checkpoint: str | None) -> int:
+    if checkpoint == "work" and not (project_root / SPEC_FILE).is_file():
+        print("WALI 状态检查未通过：")
+        print("- 进入 work 前必须有 implementation-ready spec.md")
+        return 1
     try:
         state = load_state(project_root)
         reasons = checkpoint_reasons(state, checkpoint) if checkpoint else validate_state(state)

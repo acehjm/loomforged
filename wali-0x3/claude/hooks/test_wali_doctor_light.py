@@ -29,7 +29,7 @@ class WaliDoctorLightTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("FAIL", result.stdout)
-        self.assertIn("goal.md + work.md", result.stdout)
+        self.assertIn("goal.md + spec.md + work.md", result.stdout)
 
     def test_doctor_rejects_incomplete_hook_matchers_and_layout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
