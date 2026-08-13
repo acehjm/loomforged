@@ -43,7 +43,7 @@ class WaliWorkCliTest(unittest.TestCase):
         *,
         active_task: str = "T-001, T-002",
         second_scope: str = "`src/frontend/**`",
-        second_owner: str = "frontend-dev",
+        second_owner: str = "frontend",
         third_task: bool = False,
     ) -> None:
         design_areas = "`src/feature/**`, `src/frontend/**`"
@@ -58,16 +58,16 @@ class WaliWorkCliTest(unittest.TestCase):
             ),
         )
         tasks = (
-            "| T-001 | AC-001 | 实现后端 | working | none | `src/feature/**` | none | backend-dev | none |\n"
+            "| T-001 | AC-001 | 实现后端 | working | none | `src/feature/**` | none | backend | none |\n"
             f"| T-002 | AC-001 | 实现前端 | working | none | {second_scope} | none | {second_owner} | none |"
         )
         if third_task:
             tasks += (
                 "\n| T-003 | AC-001 | 实现第三任务 | working | none | `src/third/**` | "
-                "none | backend-dev | none |"
+                "none | backend | none |"
             )
         work = WORK.replace("active_task: T-001", f"active_task: {active_task}").replace(
-            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |",
+            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend | none |",
             tasks,
         )
         self.write("work.md", work)
@@ -321,7 +321,7 @@ class WaliWorkCliTest(unittest.TestCase):
         )
         work = work.replace(
             "\n## Issues",
-            "\n| T-002 | AC-001 | 补充功能 | pending | T-001 | `src/other/**` | none | backend-dev | none |\n\n## Issues",
+            "\n| T-002 | AC-001 | 补充功能 | pending | T-001 | `src/other/**` | none | backend | none |\n\n## Issues",
         )
         self.write("work.md", work)
 
@@ -360,12 +360,12 @@ class WaliWorkCliTest(unittest.TestCase):
             SPEC.replace("`src/feature/**` |", "`src/feature/**`, `src/other/**` |"),
         )
         work = WORK.replace(
-            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |",
-            "| T-001 | AC-001 | 实现功能 | done | none | `src/feature/**` | test exit 0 | backend-dev | tester |",
+            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend | none |",
+            "| T-001 | AC-001 | 实现功能 | done | none | `src/feature/**` | test exit 0 | backend | verify |",
         ).replace("active_task: T-001", "active_task: none")
         work = work.replace(
             "\n## Issues",
-            "\n| T-002 | AC-001 | 补充功能 | pending | T-001 | `src/other/**` | none | backend-dev | none |\n\n## Issues",
+            "\n| T-002 | AC-001 | 补充功能 | pending | T-001 | `src/other/**` | none | backend | none |\n\n## Issues",
         )
         self.write("work.md", work)
 
@@ -385,7 +385,7 @@ class WaliWorkCliTest(unittest.TestCase):
         )
         work = work.replace(
             "\n## Issues",
-            "\n| T-002 | AC-001 | 补充功能 | pending | none | `src/other/**` | none | backend-dev | none |\n\n## Issues",
+            "\n| T-002 | AC-001 | 补充功能 | pending | none | `src/other/**` | none | backend | none |\n\n## Issues",
         )
         self.write("work.md", work)
 
@@ -401,8 +401,8 @@ class WaliWorkCliTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_work_checkpoint_rejects_coordinator_in_a_dual_active_set(self) -> None:
-        self.write_parallel_state(second_owner="coordinator")
+    def test_work_checkpoint_rejects_wali_in_a_dual_active_set(self) -> None:
+        self.write_parallel_state(second_owner="wali")
 
         result = self.run_cli("check", "--checkpoint", "work")
 
@@ -410,7 +410,7 @@ class WaliWorkCliTest(unittest.TestCase):
         self.assertIn("双 active Task", result.stdout)
         self.assertIn("实现 Agent", result.stdout)
 
-    def test_parallel_never_reports_a_coordinator_task(self) -> None:
+    def test_parallel_never_reports_a_wali_task(self) -> None:
         self.write(
             "spec.md",
             SPEC.replace(
@@ -425,7 +425,7 @@ class WaliWorkCliTest(unittest.TestCase):
         work = work.replace(
             "\n## Issues",
             "\n| T-002 | AC-001 | 串行集成 | pending | none | `src/integration/**` | "
-            "none | coordinator | none |\n\n## Issues",
+            "none | wali | none |\n\n## Issues",
         )
         self.write("work.md", work)
 
@@ -456,7 +456,7 @@ class WaliWorkCliTest(unittest.TestCase):
     def test_task_owner_must_name_a_deployable_implementation_role(self) -> None:
         self.write(
             "work.md",
-            WORK.replace("| backend-dev | none |", "| developer | none |"),
+            WORK.replace("| backend | none |", "| developer | none |"),
         )
 
         result = self.run_cli("check", "--checkpoint", "work")
@@ -494,8 +494,8 @@ class WaliWorkCliTest(unittest.TestCase):
         self.assertIn("active_task 必须处于 review", red.stdout)
 
         work = WORK.replace("phase: work", "phase: verify").replace(
-            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |",
-            "| T-001 | AC-001 | 实现功能 | review | none | `src/feature/**` | test exit 0 | backend-dev | none |",
+            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend | none |",
+            "| T-001 | AC-001 | 实现功能 | review | none | `src/feature/**` | test exit 0 | backend | none |",
         )
         self.write("work.md", work)
         green = self.run_cli("check", "--checkpoint", "verify")
@@ -506,8 +506,8 @@ class WaliWorkCliTest(unittest.TestCase):
             "| AC-001 | pending | none | none |",
             "| AC-001 | verified | user acceptance | user |",
         ).replace(
-            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |",
-            "| T-001 | AC-001 | 实现功能 | done | none | `src/feature/**` | test exit 0 | backend-dev | tester |",
+            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend | none |",
+            "| T-001 | AC-001 | 实现功能 | done | none | `src/feature/**` | test exit 0 | backend | verify |",
         )
         self.write("work.md", work)
 

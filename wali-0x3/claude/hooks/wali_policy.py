@@ -1004,22 +1004,22 @@ def _decide_bash(
     if agent_type in IMPLEMENTATION_AGENT_TYPES and not agent_id:
         return Decision(
             False,
-            "直接启动的实现 Agent 没有 Task claim，不能执行 Bash；请由 wali-0x3 分派",
+            "直接启动的实现 Agent 没有 Task claim，不能执行 Bash；请由 Wali 分派",
         )
     restricted_agent = _is_restricted_agent(payload)
     if _clears_agent_claims(command) and restricted_agent:
-        return Decision(False, "实现 Agent 不能清理 Task claim；请返回 wali-0x3")
+        return Decision(False, "实现 Agent 不能清理 Task claim；请返回 Wali")
     if restricted_agent and _implementation_agent_svn_violation(command):
         return Decision(
             False,
-            "实现 Agent 只执行明确只读的 SVN 命令；其他 SVN 调度请返回 Coordinator",
+            "实现 Agent 只执行明确只读的 SVN 命令；其他 SVN 调度请返回 Wali",
         )
     dangerous_local = _dangerous_local_command(command)
     if dangerous_local:
         if _catastrophic_local_command(project_root, command):
             return Decision(False, "命令可能删除项目根、主目录或系统根，已拒绝")
         if restricted_agent:
-            return Decision(False, "Subagent 不执行破坏性工作区操作；请返回 Coordinator")
+            return Decision(False, "Subagent 不执行破坏性工作区操作；请返回 Wali")
     external_write = _external_write(command)
     svn_mutations = _svn_local_mutations(project_root, command)
     has_svn_mutation = _has_svn_mutation(command)
@@ -1042,21 +1042,21 @@ def _decide_bash(
         relative = _relative_path(project_root, raw_target)
         if relative is None:
             if restricted_agent:
-                return Decision(False, "Subagent 的显式文件写入必须位于已认领 Task Scope；请返回 Coordinator")
+                return Decision(False, "Subagent 的显式文件写入必须位于已认领 Task Scope；请返回 Wali")
             confirmation_reasons.append("显式文件写入目标位于项目外")
             continue
         if relative in STATE_FILES:
             if restricted_agent:
-                return Decision(False, "Subagent 不能修改治理文件；请返回 Coordinator")
+                return Decision(False, "Subagent 不能修改治理文件；请返回 Wali")
             continue
         if relative == "CLAUDE.md" or relative.startswith(CONTROL_PREFIXES):
             if restricted_agent:
-                return Decision(False, f"Subagent 不能修改控制面 {relative}；请返回 Coordinator")
+                return Decision(False, f"Subagent 不能修改控制面 {relative}；请返回 Wali")
             confirmation_reasons.append(f"命令会修改 wali-0x3 控制面 {relative}")
             continue
         implementation_targets.append(relative)
     if has_svn_mutation and restricted_agent:
-        return Decision(False, "Subagent 不执行 SVN 调度；请返回 Coordinator 串行处理")
+        return Decision(False, "Subagent 不执行 SVN 调度；请返回 Wali 串行处理")
     if svn_mutations or implementation_targets:
         try:
             context = load_policy_context(project_root)
@@ -1064,13 +1064,13 @@ def _decide_bash(
             context = None
         if context is None or context.phase != "work":
             if restricted_agent:
-                return Decision(False, "Subagent 只在有效 work phase 写入；请返回 Coordinator 修复状态")
+                return Decision(False, "Subagent 只在有效 work phase 写入；请返回 Wali 修复状态")
             confirmation_reasons.append("当前不是有效的 work phase")
         else:
             task = _task_for_action(project_root, context, payload)
             if task is None or task.status != "working":
                 if restricted_agent:
-                    return Decision(False, "Subagent 未认领 working active Task；请返回 Coordinator")
+                    return Decision(False, "Subagent 未认领 working active Task；请返回 Wali")
                 confirmation_reasons.append("Agent 未认领处于 working 的 active Task")
             else:
                 invalid_files = [
@@ -1080,7 +1080,7 @@ def _decide_bash(
                 ]
                 if invalid_files:
                     if restricted_agent:
-                        return Decision(False, f"Subagent 写入超出 {task.id} Scope；请返回 Coordinator")
+                        return Decision(False, f"Subagent 写入超出 {task.id} Scope；请返回 Wali")
                     confirmation_reasons.append(
                         f"Bash 文件写入超出 {task.id} Scope"
                     )
@@ -1117,11 +1117,11 @@ def decide_tool(project_root: Path, payload: dict[str, object]) -> Decision:
     path = _state_path(project_root, tool_input)
     restricted_agent = _is_restricted_agent(payload)
 
-    # Governance state is always repairable by the Coordinator, even when it
+    # Governance state is always repairable by the Wali, even when it
     # is missing or invalid. Subagents return structured results instead.
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and path in STATE_FILES:
         if restricted_agent:
-            return Decision(False, "Subagent 不能修改治理文件；请返回 Coordinator")
+            return Decision(False, "Subagent 不能修改治理文件；请返回 Wali")
         return Decision(True)
 
     if tool_name in {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}:
@@ -1139,31 +1139,31 @@ def decide_tool(project_root: Path, payload: dict[str, object]) -> Decision:
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
         if path is None:
             if restricted_agent:
-                return Decision(False, "Subagent 的写入必须位于已认领 Task Scope；请返回 Coordinator")
+                return Decision(False, "Subagent 的写入必须位于已认领 Task Scope；请返回 Wali")
             return Decision(True, "写入目标不在项目内，请核对目标后确认", ask=True)
         if path == "CLAUDE.md" or path.startswith(CONTROL_PREFIXES):
             if restricted_agent:
-                return Decision(False, f"Subagent 不能修改控制面 {path}；请返回 Coordinator")
+                return Decision(False, f"Subagent 不能修改控制面 {path}；请返回 Wali")
             return Decision(True, f"将修改 wali-0x3 控制面：{path}", ask=True)
         try:
             context = load_policy_context(project_root)
         except WorkStateError:
             if restricted_agent:
-                return Decision(False, "Subagent 无法读取有效工作状态；请返回 Coordinator 修复")
+                return Decision(False, "Subagent 无法读取有效工作状态；请返回 Wali 修复")
             return Decision(True, "工作状态不可读；继续写入需要确认", ask=True)
         if context.phase != "work":
             phase = context.phase
             if restricted_agent:
-                return Decision(False, f"Subagent 不能在 {phase} phase 修改实现；请返回 Coordinator")
+                return Decision(False, f"Subagent 不能在 {phase} phase 修改实现；请返回 Wali")
             return Decision(True, f"{phase} phase 的实现写入需要确认：{path}", ask=True)
         task = _task_for_action(project_root, context, payload)
         if task is None or task.status != "working":
             if restricted_agent:
-                return Decision(False, "Subagent 未认领 working active Task；请返回 Coordinator")
+                return Decision(False, "Subagent 未认领 working active Task；请返回 Wali")
             return Decision(True, "Agent 未认领处于 working 的 active Task；继续写入需要确认", ask=True)
         if not any(_scope_matches(path, scope) for scope in task.scopes):
             if restricted_agent:
-                return Decision(False, f"Subagent 写入超出 {task.id} Scope；请返回 Coordinator")
+                return Decision(False, f"Subagent 写入超出 {task.id} Scope；请返回 Wali")
             return Decision(True, f"写入超出 {task.id} Scope：{path}", ask=True)
         return Decision(True)
     # Tools outside the configured hook matcher remain governed by Claude's own

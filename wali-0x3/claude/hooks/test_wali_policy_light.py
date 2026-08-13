@@ -126,10 +126,10 @@ class WaliPolicyLightTest(unittest.TestCase):
             "| D-001 | R-001 | 在现有 feature 接口后实现最小完整行为。 | "
             "`src/backend/**`, `src/frontend/**` |",
         )
-        second_owner = "backend-dev" if same_role else "frontend-dev"
+        second_owner = "backend" if same_role else "frontend"
         work = WORK.replace("active_task: T-001", "active_task: T-001, T-002").replace(
-            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |",
-            "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | backend-dev | none |\n"
+            "| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend | none |",
+            "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | backend | none |\n"
             f"| T-002 | AC-001 | 实现前端 | working | none | `src/frontend/**` | none | {second_owner} | none |",
         )
         (self.state / "spec.md").write_text(spec, encoding="utf-8")
@@ -158,20 +158,20 @@ class WaliPolicyLightTest(unittest.TestCase):
 
     def test_parallel_subagents_claim_distinct_tasks_and_only_write_their_scope(self) -> None:
         self.write_parallel_state()
-        backend_claim = self.lifecycle("claim-hook", "agent-back", "backend-dev")
-        frontend_claim = self.lifecycle("claim-hook", "agent-front", "frontend-dev")
+        backend_claim = self.lifecycle("claim-hook", "agent-back", "backend")
+        frontend_claim = self.lifecycle("claim-hook", "agent-front", "frontend")
 
         self.assertIn("T-001", json.dumps(backend_claim, ensure_ascii=False))
         self.assertIn("T-002", json.dumps(frontend_claim, ensure_ascii=False))
         backend = {
             "session_id": "session-test",
             "agent_id": "agent-back",
-            "agent_type": "backend-dev",
+            "agent_type": "backend",
         }
         frontend = {
             "session_id": "session-test",
             "agent_id": "agent-front",
-            "agent_type": "frontend-dev",
+            "agent_type": "frontend",
         }
         self.assertEqual(
             self.decision("Write", {"file_path": str(self.root / "src/backend/app.py")}, **backend)["decision"],
@@ -201,7 +201,7 @@ class WaliPolicyLightTest(unittest.TestCase):
             **backend,
         )
         self.assertEqual(state_write["decision"], "deny")
-        self.assertIn("Coordinator", state_write["reason"])
+        self.assertIn("Wali", state_write["reason"])
         state_bash = self.decision(
             "Bash",
             {"command": f"printf x > {self.state / 'work.md'}"},
@@ -228,7 +228,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                 self.assertEqual(destructive["decision"], "deny")
                 self.assertIn("Subagent", destructive["reason"])
 
-        self.lifecycle("release-hook", "agent-back", "backend-dev")
+        self.lifecycle("release-hook", "agent-back", "backend")
         released = self.decision(
             "Write",
             {"file_path": str(self.root / "src/backend/after.py")},
@@ -238,12 +238,12 @@ class WaliPolicyLightTest(unittest.TestCase):
 
     def test_claim_is_invalidated_if_current_owner_changes(self) -> None:
         self.write_parallel_state()
-        self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        self.lifecycle("claim-hook", "agent-back", "backend")
         work = self.state / "work.md"
         work.write_text(
             work.read_text(encoding="utf-8").replace(
-                "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | backend-dev | none |",
-                "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | frontend-dev | none |",
+                "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | backend | none |",
+                "| T-001 | AC-001 | 实现后端 | working | none | `src/backend/**` | none | frontend | none |",
             ),
             encoding="utf-8",
         )
@@ -253,18 +253,18 @@ class WaliPolicyLightTest(unittest.TestCase):
             {"file_path": str(self.root / "src/backend/after-owner-change.py")},
             session_id="session-test",
             agent_id="agent-back",
-            agent_type="backend-dev",
+            agent_type="backend",
         )
 
         self.assertEqual(result["decision"], "deny")
         self.assertIn("未认领", result["reason"])
 
-    def test_coordinator_can_clear_stale_claims_after_all_agents_stop(self) -> None:
+    def test_wali_can_clear_stale_claims_after_all_agents_stop(self) -> None:
         self.write_parallel_state(same_role=True)
-        self.lifecycle("claim-hook", "agent-stale", "backend-dev")
+        self.lifecycle("claim-hook", "agent-stale", "backend")
 
         output = self.clear_claims()
-        replacement = self.lifecycle("claim-hook", "agent-replacement", "backend-dev")
+        replacement = self.lifecycle("claim-hook", "agent-replacement", "backend")
 
         self.assertIn("已清理 1", output)
         self.assertIn("T-001", json.dumps(replacement, ensure_ascii=False))
@@ -290,7 +290,7 @@ class WaliPolicyLightTest(unittest.TestCase):
             },
             session_id="session-test",
             agent_id="agent-back",
-            agent_type="backend-dev",
+            agent_type="backend",
         )
         denied_api = self.decision(
             "Bash",
@@ -300,7 +300,7 @@ class WaliPolicyLightTest(unittest.TestCase):
             },
             session_id="session-test",
             agent_id="agent-back",
-            agent_type="backend-dev",
+            agent_type="backend",
         )
 
         self.assertNotEqual(missing_confirmation.returncode, 0)
@@ -310,8 +310,8 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertEqual(denied_api["decision"], "deny")
         self.assertIn("claim", denied_api["reason"])
 
-    def test_named_implementation_agent_without_agent_id_has_no_coordinator_write_access(self) -> None:
-        identity = {"agent_type": "backend-dev"}
+    def test_named_implementation_agent_without_agent_id_has_no_wali_write_access(self) -> None:
+        identity = {"agent_type": "backend"}
 
         state_write = self.decision(
             "Write",
@@ -348,13 +348,13 @@ class WaliPolicyLightTest(unittest.TestCase):
     def test_two_backend_instances_atomically_claim_different_tasks(self) -> None:
         self.write_parallel_state(same_role=True)
 
-        first = self.lifecycle("claim-hook", "agent-one", "backend-dev")
-        second = self.lifecycle("claim-hook", "agent-two", "backend-dev")
+        first = self.lifecycle("claim-hook", "agent-one", "backend")
+        second = self.lifecycle("claim-hook", "agent-two", "backend")
 
         self.assertIn("T-001", json.dumps(first, ensure_ascii=False))
         self.assertIn("T-002", json.dumps(second, ensure_ascii=False))
 
-    def test_coordinator_must_not_bypass_claim_boundary_with_two_active_tasks(self) -> None:
+    def test_wali_must_not_bypass_claim_boundary_with_two_active_tasks(self) -> None:
         self.write_parallel_state()
 
         result = self.decision(
@@ -392,7 +392,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                         "hook_event_name": "SubagentStart",
                         "session_id": "session-concurrent",
                         "agent_id": f"agent-race-{index}",
-                        "agent_type": "backend-dev",
+                        "agent_type": "backend",
                     }
                 )
             )
@@ -547,11 +547,11 @@ class WaliPolicyLightTest(unittest.TestCase):
         self.assertEqual(outside["decision"], "ask")
 
     def test_all_working_copy_svn_mutations_are_denied_to_implementation_agents(self) -> None:
-        self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        self.lifecycle("claim-hook", "agent-back", "backend")
         identity = {
             "session_id": "session-test",
             "agent_id": "agent-back",
-            "agent_type": "backend-dev",
+            "agent_type": "backend",
         }
         commands = (
             "svn patch changes.patch src/feature",
@@ -577,11 +577,11 @@ class WaliPolicyLightTest(unittest.TestCase):
                 self.assertIn("SVN", result["reason"])
 
     def test_implementation_agents_only_run_explicitly_read_only_svn_commands(self) -> None:
-        self.lifecycle("claim-hook", "agent-back", "backend-dev")
+        self.lifecycle("claim-hook", "agent-back", "backend")
         identity = {
             "session_id": "session-test",
             "agent_id": "agent-back",
-            "agent_type": "backend-dev",
+            "agent_type": "backend",
         }
         commands = (
             "svn status",
@@ -598,7 +598,7 @@ class WaliPolicyLightTest(unittest.TestCase):
                 result = self.decision("Bash", {"command": command}, **identity)
                 self.assertEqual(result["decision"], "allow")
 
-    def test_coordinator_svn_source_operands_do_not_count_as_scope_targets(self) -> None:
+    def test_wali_svn_source_operands_do_not_count_as_scope_targets(self) -> None:
         commands = (
             "svn patch changes.patch src/feature",
             "svn patch --strip 1 changes.patch src/feature",

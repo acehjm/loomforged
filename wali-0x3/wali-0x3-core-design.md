@@ -5,7 +5,7 @@ status: implemented
 
 # wali-0x3 核心设计
 
-`wali-0x3` 是 Agent 名称。设计目标是在 Claude Code 中提供足够的目标、范围、证据和恢复纪律，同时保持工作流活性。
+`wali-0x3` 是虚拟开发团队及协作系统的名称，主编排 Agent 使用短名 `wali`。设计目标是在 Claude Code 中提供足够的目标、范围、证据和恢复纪律，同时保持工作流活性。
 
 ## 1. 设计约束
 
@@ -15,7 +15,7 @@ status: implemented
 
 ### 例外必须可恢复
 
-主会话中可恢复或需要判断的例外优先请求用户确认；灾难性操作、实现 Subagent 的破坏性工作区命令和所有权越界才拒绝。每次拒绝都必须留下至少一个可执行修复动作，Subagent 拒绝统一交回 Coordinator。PostHook 发生在副作用之后，因此只能报告和引导修复，不能把已经变更的状态锁死。
+主会话中可恢复或需要判断的例外优先请求用户确认；灾难性操作、实现 Subagent 的破坏性工作区命令和所有权越界才拒绝。每次拒绝都必须留下至少一个可执行修复动作，Subagent 拒绝统一交回 Wali。PostHook 发生在副作用之后，因此只能报告和引导修复，不能把已经变更的状态锁死。
 
 ### 稳定定义与运行状态分离
 
@@ -33,7 +33,7 @@ Policy 关注 Scope、控制面、破坏性命令和外部写入。项目命令�
 `goal.md` frontmatter 只保存稳定契约字段：
 
 ```yaml
-agent: wali-0x3
+agent: wali
 goal_id: G-001
 confirmed: true
 ```
@@ -41,7 +41,7 @@ confirmed: true
 `spec.md` frontmatter 只保存 Goal 关联和就绪状态：
 
 ```yaml
-agent: wali-0x3
+agent: wali
 goal_id: G-001
 status: implementation-ready
 ```
@@ -57,7 +57,7 @@ waiting_for: none
 outcome: none
 ```
 
-`active_task` 可为 `none`、一个 Task ID，或两个逗号分隔的 Task ID。因此 Task 或阶段切换只需修改 Work，不会连带重写稳定 Goal/Spec。Backend/Frontend Dev 的实现接口是 Goal 的 why/what、Spec 的 Current/Target Behavior、Behavior Scenarios、Design/Verification Mapping 和 Autonomous Decision Contract；Work 只提供当前游标。Policy 内部实现不应把摘要、代次或能力边暴露给每个调用者。
+`active_task` 可为 `none`、一个 Task ID，或两个逗号分隔的 Task ID。因此 Task 或阶段切换只需修改 Work，不会连带重写稳定 Goal/Spec。`backend`/`frontend` 的实现接口是 Goal 的 why/what、Spec 的 Current/Target Behavior、Behavior Scenarios、Design/Verification Mapping 和 Autonomous Decision Contract；Work 只提供当前游标。Policy 内部实现不应把摘要、代次或能力边暴露给每个调用者。
 
 ### Spec 编译与持久化
 
@@ -92,11 +92,11 @@ PreToolUse 的高频门禁仍只解析 Goal/Work frontmatter 和 active Task 行
 
 ### TaskClaim
 
-并发身份边界不是第二份项目状态。Coordinator 先把一至两个 Task 标为 `working` 并列入 `active_task`；`SubagentStart` 再用 `session_id + agent_id + agent_type`，在系统临时目录中以逐 Task `O_CREAT | O_EXCL` 文件原子认领 Owner 匹配的 Task。两个相同类型的 Agent 竞争同一候选集时也只能各得一个 Task。`SubagentStop` 删除对应认领。
+并发身份边界不是第二份项目状态。Wali 先把一至两个 Task 标为 `working` 并列入 `active_task`；`SubagentStart` 再用 `session_id + agent_id + agent_type`，在系统临时目录中以逐 Task `O_CREAT | O_EXCL` 文件原子认领 Owner 匹配的 Task。两个相同类型的 Agent 竞争同一候选集时也只能各得一个 Task。`SubagentStop` 删除对应认领。
 
-认领只在 Agent 启停时发生，不写 Work、不轮询、无心跳、无长期锁，也不承担恢复权威。新会话从 Goal/Spec/Work 与真实差异恢复，并重新认领。PreToolUse 用该认领把每个实现 Agent 限制在自己的 Task Scope，并在每次写入时复核当前 Owner；Goal/Spec/Work/Handoff 仍只有 Coordinator 可以写。
+认领只在 Agent 启停时发生，不写 Work、不轮询、无心跳、无长期锁，也不承担恢复权威。新会话从 Goal/Spec/Work 与真实差异恢复，并重新认领。PreToolUse 用该认领把每个实现 Agent 限制在自己的 Task Scope，并在每次写入时复核当前 Owner；Goal/Spec/Work/Handoff 仍只有 Wali 可以写。
 
-若 Agent 异常退出导致 Stop Hook 未释放 claim，Coordinator 必须等待其他实现 Agent 全部结束，再调用 `wali_work.py clear-claims --all-agents-stopped` 清理本项目临时 claim 并重新分派。该参数显式确认所有实现 Agent 已停止，且实现 Agent 无权调用；这是恢复事务，不是心跳、TTL 或持续锁。
+若 Agent 异常退出导致 Stop Hook 未释放 claim，Wali 必须等待其他实现 Agent 全部结束，再调用 `wali_work.py clear-claims --all-agents-stopped` 清理本项目临时 claim 并重新分派。该参数显式确认所有实现 Agent 已停止，且实现 Agent 无权调用；这是恢复事务，不是心跳、TTL 或持续锁。
 
 ### Stop
 
@@ -123,7 +123,7 @@ Spec 把“何时问用户”变成显式接口，而不是让每个 Agent 临�
 - `Must not`：扩大业务范围、弱化验证、覆盖用户修改或伪造事实。
 - `If blocked`：先从代码、测试、配置、历史和文档取证，只带一个真正阻塞的问题回来。
 
-用户确认 Goal+Spec 后，Coordinator 自动推进 Task 和检查点。新的代码事实若只修正行为场景或技术映射，只在阶段检查点批量更新 Spec 并继续；改变 Goal/AC 时才返回 define。这样交互次数由真实决策点决定，而不是由 Task 数量决定。
+用户确认 Goal+Spec 后，Wali 自动推进 Task 和检查点。新的代码事实若只修正行为场景或技术映射，只在阶段检查点批量更新 Spec 并继续；改变 Goal/AC 时才返回 define。这样交互次数由真实决策点决定，而不是由 Task 数量决定。
 
 ## 6. 多任务与并发适用条件
 
@@ -132,11 +132,11 @@ Spec 把“何时问用户”变成显式接口，而不是让每个 Agent 临�
 - 至少两个可独立推进的 Task。
 - Task 存在真实先后依赖。
 - 多个写入者需要证明 Scope 互斥。
-- 每个 Task 的 Owner 明确为 `backend-dev`、`frontend-dev` 或 `coordinator`。
+- 每个 Task 的 Owner 明确为 `backend`、`frontend` 或 `wali`。
 
-`parallel` 输出只是并发候选，不是权限。Coordinator 最多选择两个依赖已满足、Scope 两两互斥的 working Task；可以是前端+后端，也可以是两个同类型实现 Agent。TaskClaim 提供实例身份边界，PreToolUse 提供已知显式写入的 Scope 边界。
+`parallel` 输出只是并发候选，不是权限。Wali 最多选择两个依赖已满足、Scope 两两互斥的 working Task；可以是前端+后端，也可以是两个同类型实现 Agent。TaskClaim 提供实例身份边界，PreToolUse 提供已知显式写入的 Scope 边界。
 
-同一 SVN 工作副本的文件系统并不天然隔离，因此共享配置、lockfile、路由总表、生成代码、数据库迁移以及任何重叠 Scope 不能并发写；它们必须归一个 Task，或拆成后续串行 integration Task。实现 Agent 不做任何 SVN 工作副本或远端调度，Coordinator 在所有返回结果核对后串行处理。需要执行不可信或有隐藏副作用的程序时仍使用独立工作区/沙箱。单任务不创建图、Mermaid 或并行候选。
+同一 SVN 工作副本的文件系统并不天然隔离，因此共享配置、lockfile、路由总表、生成代码、数据库迁移以及任何重叠 Scope 不能并发写；它们必须归一个 Task，或拆成后续串行 integration Task。实现 Agent 不做任何 SVN 工作副本或远端调度，Wali 在所有返回结果核对后串行处理。需要执行不可信或有隐藏副作用的程序时仍使用独立工作区/沙箱。单任务不创建图、Mermaid 或并行候选。
 
 ## 7. 外部副作用
 

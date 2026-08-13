@@ -16,7 +16,7 @@ STOP = HOOKS / "wali_stop.py"
 
 
 GOAL = """---
-agent: wali-0x3
+agent: wali
 goal_id: G-001
 confirmed: true
 ---
@@ -45,7 +45,7 @@ confirmed: true
 
 
 SPEC = """---
-agent: wali-0x3
+agent: wali
 goal_id: G-001
 status: implementation-ready
 ---
@@ -119,7 +119,7 @@ updated: 2026-08-11T12:00:00+08:00
 
 | ID | Acceptance | Task | Status | Depends On | Scope | Evidence | Owner | Verifier |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend-dev | none |
+| T-001 | AC-001 | 实现功能 | working | none | `src/feature/**` | none | backend | none |
 
 ## Issues
 
@@ -273,8 +273,8 @@ class WaliLivenessTest(unittest.TestCase):
                 "tool_name": "Edit",
                 "tool_input": {
                     "file_path": str(work_path),
-                    "old_string": "| none | backend-dev | none |",
-                    "new_string": "| test exit 0 | backend-dev | tester |",
+                    "old_string": "| none | backend | none |",
+                    "new_string": "| test exit 0 | backend | verify |",
                 },
             }
         )

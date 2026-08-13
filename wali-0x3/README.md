@@ -2,7 +2,7 @@
 
 > 让 Claude Code 中的开发工作可确认、可执行、可验证、可恢复，同时不让治理流程拖慢实际交付。
 
-`wali-0x3` 是 Agent 名称，不是软件版本名。它是一套可嵌入项目仓库的提示词、状态格式和 Claude Code Hooks。
+`wali-0x3` 是虚拟开发团队及协作系统的名称，不是软件版本名；它的主编排 Agent 使用短名 `wali`。这套系统可作为提示词、状态格式和 Claude Code Hooks 嵌入项目仓库。
 
 归档目录使用可见的 `claude/`；部署到目标项目时复制或改名为 `.claude/`。目标运行环境面向 SVN 工作副本，归档仓库本身使用 Git。
 
@@ -123,7 +123,7 @@ Policy 是软门禁：
 
 - 普通命令和已认领 active Task Scope 内写入显式返回 `allow`，跳过 Claude Code 的常规权限提示；更高优先级的 deny/ask 规则仍然生效。
 - 外部写入、控制面修改、Scope 外写入、非 work 阶段写入和可恢复的高风险本地操作返回 `ask`。
-- 可能删除项目根、主目录或系统根的灾难性操作，以及实现 Subagent 执行破坏性工作区命令或越过认领、Scope、控制面、SVN 调度边界时返回 `deny`。这些拒绝都指向 Coordinator，不阻断主会话修复。
+- 可能删除项目根、主目录或系统根的灾难性操作，以及实现 Subagent 执行破坏性工作区命令或越过认领、Scope、控制面、SVN 调度边界时返回 `deny`。这些拒绝都指向 Wali，不阻断主会话修复。
 
 工作区内普通读取、搜索、测试、构建和检查命令无需预先登记。
 
@@ -133,9 +133,9 @@ Scope 对 Write/Edit 等原生写入工具是默认边界；Bash 还识别重定
 
 最多两个实现 Agent 并发。`SubagentStart` 根据 `session_id + agent_id + agent_type`，通过系统临时目录中的逐 Task `O_EXCL` 文件原子认领一个 Owner 匹配的 active Task；每次工具调用还会复核当前 Owner。`SubagentStop` 释放认领。认领不写仓库、不改 Work、没有轮询心跳，也不持有长期进程锁。两个同类型 Agent 也可以各认领一个 Scope 互斥的 Task。
 
-若 Agent 异常退出且 Stop Hook 未执行，Coordinator 等其他实现 Agent 全部结束后运行 `python3 .claude/hooks/wali_work.py clear-claims --all-agents-stopped`，再重新分派。该参数是对“全部实现 Agent 已停止”的显式确认；实现 Agent 无权调用。命令只清理系统临时目录中的本项目 claim。
+若 Agent 异常退出且 Stop Hook 未执行，Wali 等其他实现 Agent 全部结束后运行 `python3 .claude/hooks/wali_work.py clear-claims --all-agents-stopped`，再重新分派。该参数是对“全部实现 Agent 已停止”的显式确认；实现 Agent 无权调用。命令只清理系统临时目录中的本项目 claim。
 
-Coordinator 是 Goal/Spec/Work/Handoff 的唯一写入者。Backend/Frontend Dev、Reviewer 和 Tester 只返回结构化结果；Coordinator 核对路径与真实差异后，一次批量写 Work，并串行执行所有必要的 SVN 工作副本与远端调度。共享配置、lockfile、路由总表、生成代码和数据库迁移必须归一个 Task，或拆成后续串行 integration Task。
+`wali` 是 Goal/Spec/Work/Handoff 的唯一写入者。`backend`、`frontend`、`review` 和 `verify` 只返回结构化结果；Wali 核对路径与真实差异后，一次批量写 Work，并串行执行所有必要的 SVN 工作副本与远端调度。共享配置、lockfile、路由总表、生成代码和数据库迁移必须归一个 Task，或拆成后续串行 integration Task。
 
 ### 外部 Skill
 
@@ -160,7 +160,7 @@ PostHook 只在治理状态写入后检查 Goal/Spec/Work 是否完整。发现�
 
 - `rm -rf`、`git reset --hard`、强制 `git clean`、`svn revert`，以及带删除未版本化/忽略项参数的 `svn cleanup` 等可恢复高风险命令会请求确认。普通 `svn cleanup` 直接可用。
 - Git/SVN 推送或提交、上传、发布、集群修改等外部写入。
-- Coordinator 的本地 SVN 调度超出 active Task Scope 的路径；实现 Agent 的 SVN 调度一律交回 Coordinator。
+- Wali 的本地 SVN 调度超出 active Task Scope 的路径；实现 Agent 的 SVN 调度一律交回 Wali。
 
 外部写入直接返回 `ask`，由用户当场核对目标与影响；不再为了获得许可修改 Goal。
 
@@ -168,14 +168,17 @@ PostHook 只在治理状态写入后检查 Goal/Spec/Work 是否完整。发现�
 
 每个 Agent 定义都由三层组成：稳定的身份与判断立场、当前职责与边界、结构化输出契约。身份不是装饰性人设；它规定角色面对不完整证据和方案取舍时如何思考，拆分或精简角色时不得只保留权限清单。
 
-- Coordinator：唯一维护 Goal/Spec/Work/Handoff；一次确认后连续编排检查点、Task 与串行 SVN 集成。
-- Backend Dev：依据 implementation-ready Spec 实现已认领的后端 Task，返回路径、自检和 Evidence。
-- Frontend Dev：依据已确认的接口 Seam 实现已认领的 UI/交互 Task，返回路径、自检和 Evidence。
-- Reviewer：在 verify 中独立审查，向 Coordinator 返回建议 Issues。
-- Tester：在 verify 中按 AC Method 独立验证，向 Coordinator 返回 Evidence。
-- Architect：只在高代价架构选择会改变 Goal 时做只读比较。
+- `wali`：唯一维护 Goal/Spec/Work/Handoff；一次确认后连续编排检查点、Task 与串行 SVN 集成。
+- `product`：在产品方向、体验取舍或优先级会改变 Goal 时，以用户体验、聚焦和端到端一致性提供只读产品判断。
+- `arch`：只在高代价架构选择会改变 Goal 时做只读比较。
+- `backend`：依据 implementation-ready Spec 实现已认领的后端 Task，返回路径、自检和 Evidence。
+- `frontend`：依据已确认的接口 Seam 实现已认领的 UI/交互 Task，返回路径、自检和 Evidence。
+- `review`：在 verify 中独立审查，向 Wali 返回建议 Issues。
+- `verify`：在 verify 中按 AC Method 独立验证，向 Wali 返回 Evidence。
 
-主会话能稳定完成时不增加 Agent。存在两个无依赖、Scope 互斥且工作量值得并发的 Task 时，Coordinator 可同时启动前端+后端，或两个同类型实现 Agent。默认设置不启用 Agent Teams、心跳或 idle 监督；只用轻量 Subagent 启停 Hook 做 Task 认领与释放。
+`product` 借鉴史蒂夫·乔布斯公开体现出的产品方法：从用户体验倒推技术、极致聚焦、对端到端体验负责，并敢于拒绝稀释核心价值的功能。这是产品判断框架，不是人物模仿；它不采用羞辱、操控或制造恐惧等管理方式，也不拥有 Goal 或代替用户决策。
+
+主会话能稳定完成时不增加 Agent。存在两个无依赖、Scope 互斥且工作量值得并发的 Task 时，Wali 可同时启动前端+后端，或两个同类型实现 Agent。默认设置不启用 Agent Teams、心跳或 idle 监督；只用轻量 Subagent 启停 Hook 做 Task 认领与释放。
 
 ## 最小交互原则
 

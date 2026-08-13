@@ -34,8 +34,8 @@ ACCEPTANCE_STATES = {"pending", "verified"}
 ISSUE_STATES = {"open", "fixing", "verify", "closed"}
 ISSUE_SEVERITIES = {"blocker", "high", "medium", "low"}
 SPEC_STATES = {"draft", "implementation-ready"}
-IMPLEMENTATION_AGENT_TYPES = {"backend-dev", "frontend-dev"}
-TASK_OWNER_TYPES = IMPLEMENTATION_AGENT_TYPES | {"coordinator"}
+IMPLEMENTATION_AGENT_TYPES = {"backend", "frontend"}
+TASK_OWNER_TYPES = IMPLEMENTATION_AGENT_TYPES | {"wali"}
 MAX_ACTIVE_IMPLEMENTATION_TASKS = 2
 PLACEHOLDERS = {"", "-", "—", "none", "n/a", "pending", "待补充", "待验证", "待分配"}
 
@@ -399,8 +399,8 @@ def parse_goal(text: str) -> Goal:
     missing = sorted(required - metadata.keys())
     if missing:
         raise WorkStateError("goal.md 缺少字段：" + ", ".join(missing))
-    if metadata["agent"] != "wali-0x3":
-        raise WorkStateError("goal.md 的 agent 必须是 wali-0x3")
+    if metadata["agent"] != "wali":
+        raise WorkStateError("goal.md 的 agent 必须是 wali")
     requirements = tuple(
         Requirement(
             id=row.get("ID", "").strip(),
@@ -431,8 +431,8 @@ def parse_spec(text: str) -> Spec:
     missing = sorted(required - metadata.keys())
     if missing:
         raise WorkStateError("spec.md 缺少字段：" + ", ".join(missing))
-    if metadata["agent"] != "wali-0x3":
-        raise WorkStateError("spec.md 的 agent 必须是 wali-0x3")
+    if metadata["agent"] != "wali":
+        raise WorkStateError("spec.md 的 agent 必须是 wali")
     autonomy_text = section(text, "## Autonomous Decision Contract")
     open_questions = tuple(
         line.lstrip()[1:].strip()
@@ -577,8 +577,8 @@ def load_policy_context(project_root: Path) -> PolicyContext:
         raise WorkStateError("goal.md 缺少门禁字段：" + ", ".join(missing_goal))
     if missing_work:
         raise WorkStateError("work.md 缺少门禁字段：" + ", ".join(missing_work))
-    if goal_metadata["agent"] != "wali-0x3":
-        raise WorkStateError("goal.md 的 agent 必须是 wali-0x3")
+    if goal_metadata["agent"] != "wali":
+        raise WorkStateError("goal.md 的 agent 必须是 wali")
     if goal_metadata["goal_id"] != work_metadata["goal_id"]:
         raise WorkStateError("work.md 的 goal_id 必须与 goal.md 一致")
     phase = work_metadata["phase"].lower()
@@ -1049,7 +1049,7 @@ def validate_state(state: WorkState) -> list[str]:
             reasons.append(f"{task.id} 缺少任务描述")
         if task.owner not in TASK_OWNER_TYPES:
             reasons.append(
-                f"{task.id} Owner 必须是 backend-dev、frontend-dev 或 coordinator"
+                f"{task.id} Owner 必须是 backend、frontend 或 wali"
             )
         if task.status == "done":
             if not _has_evidence(task.evidence):
@@ -1172,8 +1172,8 @@ def validate_state(state: WorkState) -> list[str]:
         task.owner not in IMPLEMENTATION_AGENT_TYPES for task in active_tasks
     ):
         reasons.append(
-            "双 active Task 只能交给 backend-dev 或 frontend-dev 实现 Agent；"
-            "coordinator Task 必须串行"
+            "双 active Task 只能交给 backend 或 frontend 实现 Agent；"
+            "wali Task 必须串行"
         )
     for task in active_tasks:
         if state.phase == "work" and task.status not in {"working", "review"}:
@@ -1291,7 +1291,7 @@ def _run_claim_hook(project_root: Path) -> int:
         if task is None:
             context = (
                 "WALI 未分配 active Task。不要修改实现或治理文件；"
-                "返回 Coordinator 说明未找到可认领任务。"
+                "返回 Wali 说明未找到可认领任务。"
             )
         else:
             context = (

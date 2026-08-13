@@ -1,5 +1,5 @@
 ---
-agent: wali-0x3
+agent: wali
 goal_id: pending
 confirmed: false
 ---

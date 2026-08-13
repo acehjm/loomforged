@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "agent": "wali-0x3",
+  "agent": "wali",
   "disableSkillShellExecution": false,
   "model": "opus",
   "effortLevel": "high",
@@ -39,7 +39,7 @@
     ],
     "SubagentStart": [
       {
-        "matcher": "backend-dev|frontend-dev",
+        "matcher": "backend|frontend",
         "hooks": [
           {
             "type": "command",
@@ -57,7 +57,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "backend-dev|frontend-dev",
+        "matcher": "backend|frontend",
         "hooks": [
           {
             "type": "command",

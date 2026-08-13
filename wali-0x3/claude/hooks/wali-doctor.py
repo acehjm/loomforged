@@ -21,21 +21,23 @@ CORE_PROJECT_PATHS = (
     "docs/wali-0x3/work.md",
 )
 AGENT_NAMES = (
-    "wali-0x3",
-    "architect",
-    "backend-dev",
-    "frontend-dev",
-    "reviewer",
-    "tester",
+    "wali",
+    "product",
+    "arch",
+    "backend",
+    "frontend",
+    "review",
+    "verify",
 )
 CORE_CONTROL_PATHS = (
     "settings.json",
-    "agents/wali-0x3.md",
-    "agents/architect.md",
-    "agents/backend-dev.md",
-    "agents/frontend-dev.md",
-    "agents/reviewer.md",
-    "agents/tester.md",
+    "agents/wali.md",
+    "agents/product.md",
+    "agents/arch.md",
+    "agents/backend.md",
+    "agents/frontend.md",
+    "agents/review.md",
+    "agents/verify.md",
     "hooks/wali-doctor.py",
     "hooks/wali_work.py",
     "hooks/wali_policy.py",
@@ -45,6 +47,16 @@ CORE_CONTROL_PATHS = (
     "skills/wali-resume/SKILL.md",
     "skills/wali-handoff/SKILL.md",
     "skills/wali-inspect/SKILL.md",
+)
+LEGACY_AGENT_NAMES = (
+    "wali-0x3",
+    "architect",
+    "backend-dev",
+    "frontend-dev",
+    "reviewer",
+    "tester",
+    "coordinator",
+    "developer",
 )
 
 
@@ -61,14 +73,22 @@ def _layout(project_root: Path) -> Diagnostic:
     missing = [path for path in paths if not (project_root / path).is_file()]
     if missing:
         return Diagnostic("FAIL", "布局", "缺少：" + ", ".join(missing))
-    legacy = project_root / control / "agents" / "developer.md"
-    if legacy.is_file():
-        return Diagnostic("FAIL", "布局", f"不应保留遗留 Agent：{control}/agents/developer.md")
+    legacy = [
+        f"{control}/agents/{name}.md"
+        for name in LEGACY_AGENT_NAMES
+        if (project_root / control / "agents" / f"{name}.md").is_file()
+    ]
+    if legacy:
+        return Diagnostic("FAIL", "布局", "不应保留遗留 Agent：" + ", ".join(legacy))
     invalid_identities = []
     for name in AGENT_NAMES:
         path = project_root / control / "agents" / f"{name}.md"
         definition = path.read_text(encoding="utf-8")
-        if "## 身份" not in definition or "你是 wali-0x3" not in definition:
+        if (
+            "## 身份" not in definition
+            or f"name: {name}" not in definition
+            or "wali-0x3" not in definition
+        ):
             invalid_identities.append(f"{control}/agents/{name}.md")
     if invalid_identities:
         return Diagnostic(
@@ -97,8 +117,8 @@ def _settings(project_root: Path) -> Diagnostic:
     except (OSError, json.JSONDecodeError) as error:
         return Diagnostic("FAIL", "Hook 设置", str(error))
     skill_shell_disabled = settings.get("disableSkillShellExecution") is not False
-    if settings.get("agent") != "wali-0x3":
-        return Diagnostic("FAIL", "Hook 设置", "默认 Agent 必须是 wali-0x3")
+    if settings.get("agent") != "wali":
+        return Diagnostic("FAIL", "Hook 设置", "默认 Agent 必须是 wali")
     hooks = settings.get("hooks")
     if not isinstance(hooks, dict):
         return Diagnostic("FAIL", "Hook 设置", "缺少 hooks")
@@ -139,7 +159,7 @@ def _settings(project_root: Path) -> Diagnostic:
         )
     ):
         return Diagnostic("FAIL", "Hook 设置", "Hook 条目格式无效")
-    expected_agents = "backend-dev|frontend-dev"
+    expected_agents = "backend|frontend"
     if (
         subagent_start_entry.get("matcher") != expected_agents
         or subagent_stop_entry.get("matcher") != expected_agents

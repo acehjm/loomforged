@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # 目标
 
-把 `$ARGUMENTS`、当前对话和真实代码编译为 Goal+Spec 候选包，集中确认一次后才一次性写入 `goal.md + spec.md + work.md`，并立即进入连续开发。`wali-0x3` 是 Agent 名称；不要给它编造版本名。
+把 `$ARGUMENTS`、当前对话和真实代码编译为 Goal+Spec 候选包，集中确认一次后才一次性写入 `goal.md + spec.md + work.md`，并立即进入连续开发。`wali-0x3` 是系统名称，主编排 Agent 是 `wali`；不要把名称误作软件版本。
 
 # 先发现，后提问
 
@@ -49,7 +49,7 @@ disable-model-invocation: true
 
 保留模板中的二级标题、表头及自主契约四个英文标签，它们是 `wali_work.py` 的稳定接口。
 
-不要为了显得完整发明架构。低风险局部任务只需足够实施的最小设计；高代价接口、迁移、安全或可靠性选择才调用 Architect 并记录方案取舍。现有最高测试 Seam 由 Agent 根据代码自主选择；只有必须新建会改变公开行为或引入高代价接口的 Seam 时，才按 Must ask 询问用户。
+不要为了显得完整发明架构。低风险局部任务只需足够实施的最小设计；高代价接口、迁移、安全或可靠性选择才调用 `arch` 并记录方案取舍。目标用户、核心价值、体验取舍或优先级会实质改变 Goal 时调用 `product`，把建议纳入候选包但不替用户决定。现有最高测试 Seam 由 Agent 根据代码自主选择；只有必须新建会改变公开行为或引入高代价接口的 Seam 时，才按 Must ask 询问用户。
 
 # 持久化时机
 
@@ -62,11 +62,11 @@ disable-model-invocation: true
 
 ```yaml
 # goal.md
-agent: wali-0x3
+agent: wali
 confirmed: false
 
 # spec.md
-agent: wali-0x3
+agent: wali
 status: draft
 
 # work.md
@@ -85,11 +85,11 @@ outcome: none
 
 1. 为 Goal 分配稳定 `G-XXX` ID；在同一写入回合同步持久化 Goal、Spec、Work，将 `confirmed` 设为 `true`、Spec status 设为 `implementation-ready`。
 2. 在 `work.md` 为每个 AC 建立运行状态。
-3. 从 Design/Verification Mapping 生成产生可观察结果所需的最少 Task。每项 Task 包含关联 AC、状态、依赖、精确 Scope、Owner、Evidence 和 Verifier；前端 Task 用 `frontend-dev`，后端 Task 用 `backend-dev`，串行集成可用 `coordinator`。
+3. 从 Design/Verification Mapping 生成产生可观察结果所需的最少 Task。每项 Task 包含关联 AC、状态、依赖、精确 Scope、Owner、Evidence 和 Verifier；前端 Task 用 `frontend`，后端 Task 用 `backend`，串行集成可用 `wali`。
 4. 单任务不需要额外依赖设计。多任务先用 `frontier`/`parallel` 检查；只有无依赖、Scope 互斥且工作量足够的两项才并发。共享配置、lockfile、路由总表、生成代码和数据库迁移只能归一项，或拆为后续 integration Task。
 5. 选择一个可执行 Task，或一对安全并发 Task；将它们设为 `working`，把 Work 的 `phase` 改为 `work`，并用逗号将一至两个 ID 写入 `active_task`。
 6. 运行 `python3 .claude/hooks/wali_work.py check --checkpoint work`，同时验证 Spec、依赖、Scope 互斥与活动 Task。
-7. 一个 Task 由主会话或对应实现 Agent 执行；两个 Task 在同一轮同时调用两个 `backend-dev`/`frontend-dev` 实例。子 Agent 不写治理文件或执行 SVN 调度，Coordinator 在两者结束后一次批量写回 Work。
+7. 一个 Task 由主会话或对应实现 Agent 执行；两个 Task 在同一轮同时调用两个 `backend`/`frontend` 实例。子 Agent 不写治理文件或执行 SVN 调度，Wali 在两者结束后一次批量写回 Work。
 8. 立即继续实现，不因为“规格已确认”而停下来等待下一条用户消息。
 
 # 自主执行纪律
