@@ -1,0 +1,51 @@
+# 本地配置与身份凭证
+config.local.yaml
+config.local.yml
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 运行时数据
+data/*
+!data/.gitkeep
+
+# 生成的报告
+reports/*
+!reports/.gitkeep
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+*.bak
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# 编辑器
+.idea/
+.vscode/

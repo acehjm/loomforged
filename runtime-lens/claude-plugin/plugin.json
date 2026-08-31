@@ -1,0 +1,8 @@
+{
+  "name": "runtime-lens",
+  "version": "0.11.0",
+  "description": "Fast read-only diagnostics for source-to-runtime calls, Linux services, Tomcat, Nginx, events, installation, configuration, logs, and traces.",
+  "author": {
+    "name": "mjh"
+  }
+}

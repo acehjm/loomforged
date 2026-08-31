@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "runtime-lens": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"
+      ],
+      "env": {
+        "RUNTIME_LENS_CONFIG": "%USERPROFILE%/.ssh/runtime-lens.json"
+      }
+    }
+  }
+}

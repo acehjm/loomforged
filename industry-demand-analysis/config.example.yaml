@@ -1,0 +1,84 @@
+# 内部需求系统接口配置
+api:
+  base_url: "http://highwaypro.hikvision.com"
+  endpoint: "/webApi/irdms-highway/assessView/findAssessList"
+  method: "POST"
+
+  # Cookie 从环境变量读取，不要直接写入配置文件
+  cookie_env: "IRDMS_COOKIE"
+
+  timeout_seconds: 30
+  page_size: 100
+
+  headers:
+    Accept: "application/json, text/plain, */*"
+    Content-Type: "application/json"
+    Origin: "http://highwaypro.hikvision.com"
+    Referer: "http://highwaypro.hikvision.com/custom_req_evaluation"
+
+  # 接口固定请求参数
+  body_defaults:
+    pageType: "all"
+
+  # 请求字段映射
+  # page 和 rows 已根据当前接口确认。
+  # 其他字段需要通过浏览器开发者工具确认实际参数名称后填写。
+  fields:
+    page: "page"
+    page_size: "rows"
+    industry: null
+    start_time: null
+    end_time: null
+    project_name: null
+    requirement_id: null
+    development_flow: "devFlowNum"
+    product: null
+
+# 本地数据目录
+storage:
+  root: "./data"
+  reports: "./reports"
+
+  files:
+    requirements_jsonl: "requirements.jsonl"
+    requirements_markdown: "requirements.md"
+    classified_jsonl: "classified.jsonl"
+    taxonomy: "taxonomy.md"
+
+# 模板目录
+templates:
+  taxonomy: "./templates/taxonomy.md"
+  report: "./templates/report.html"
+
+# 数据处理
+processing:
+  # 优先用于判断同一条接口记录
+  unique_key: "bizId"
+
+  # 需求分析使用的文本字段
+  requirement_fields:
+    - "demandDesc"
+    - "userPainPoints"
+    - "projectDescription"
+
+  # 评估内容对应的接口字段。
+  # 确认字段名称后补充；没有评估内容时保持为空。
+  assessment_fields: []
+
+  # 保存到 Markdown 和分类数据中的基础字段
+  metadata_fields:
+    - "bizId"
+    - "projectName"
+    - "industryI18n"
+    - "areaCodeI18n"
+    - "produModelName"
+    - "produModel"
+    - "components"
+    - "createTime"
+    - "devFlowNum"
+
+# 报告配置
+report:
+  title: "行业需求分析报告"
+  language: "zh-CN"
+  include_source_requirements: true

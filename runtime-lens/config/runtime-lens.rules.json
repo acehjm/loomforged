@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "platformRoots": [
+    "/opt/hikvision",
+    "/opt/opsmgr"
+  ],
+  "pathTemplates": [
+    {
+      "id": "business-services",
+      "category": "business",
+      "componentPath": "{platformRoot}/web/components/{component}.{N}",
+      "configPatterns": [
+        "conf/*",
+        "bin/{service}/*"
+      ],
+      "logPatterns": [
+        "logs/{component}.{service}.*.log",
+        "logs/{component}.{service}.*.log.[0-9]*",
+        "logs/*.log",
+        "logs/*.log.[0-9]*",
+        "logs/{service}/*.log",
+        "logs/{service}/*.log.[0-9]*",
+        "logs/{service}/{component}.{service}.*.log",
+        "logs/{service}/{component}.{service}.*.log.[0-9]*"
+      ],
+      "startScriptPatterns": [
+        "script/{service}/*.sh",
+        "script/*.sh"
+      ],
+      "installationFailurePatterns": [
+        "{component}.{N}.faild/*"
+      ],
+      "tomcat": {
+        "componentPattern": "tomcat*",
+        "deploymentPatterns": [
+          "webapps/{component}",
+          "webapps/{service}"
+        ],
+        "logPatterns": [
+          "logs/{component}/{service}/*.log",
+          "logs/{component}/{service}/*.log.[0-9]*",
+          "logs/{component}/{component}.{service}.*.log",
+          "logs/{component}/{component}.{service}.*.log.[0-9]*"
+        ]
+      }
+    }
+  ],
+  "nginx": {
+    "configRoots": [
+      "{platformRoot}/web/components/cluster.{N}/data/proxy_section",
+      "{platformRoot}/web/components/cluster.{N}/data/server_section"
+    ],
+    "accessLogs": [
+      "{platformRoot}/web/components/cluster.{N}/bin/cluster/nginx/logs/access.log",
+      "{platformRoot}/web/components/cluster.{N}/logs/proxy/cluster.proxy.access.other.log"
+    ],
+    "errorLogs": [
+      "{platformRoot}/web/components/cluster.{N}/logs/proxy/cluster.proxy.error.log"
+    ]
+  },
+  "installationLogs": [
+    "{platformRoot}/web/opsMgrAgent/modules/install/tool/pg_client/logs/rdbms/postgresql_tool.debug.log",
+    "{platformRoot}/web/opsMgrAgent/modules/install/tool/pg_client/logs/rdbms/postgresql_tool.error.log"
+  ],
+  "traceSearch": {
+    "roots": [
+      "{platformRoot}/web/components"
+    ],
+    "filePatterns": [
+      "*.log",
+      "*.log.[0-9]*"
+    ],
+    "maxDepth": 6
+  },
+  "serviceAliases": {}
+}

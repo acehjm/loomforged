@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aegis SceneLens｜安防业务场景透镜"
+  short_description: "从零散、不连续的安防需求中复原业务场景、风险与处置闭环"
+  default_prompt: "使用 $aegis-scene-lens 复原这些安防需求片段的业务场景与处置闭环，并仅按需展开深研。"

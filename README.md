@@ -8,6 +8,7 @@ LoomForge 是一套方法论，用于将零散、碎片化的输入锻造为结�
 field-notes —— 整理零散文本内容整理为结构化知识
 code-scribe —— 逆向代码生成文档
 prd-craft —— 建立需求边界，生成 PRD 文档
+[[runtime-lens/README|runtime-lens]] —— 关联本地源码与测试环境运行证据，形成可追溯的只读诊断
 
 ## Philosophy
 结构先行，产出在后；技能间彼此解耦；持续生长，不限定形态。
